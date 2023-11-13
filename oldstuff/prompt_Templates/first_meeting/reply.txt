@@ -1,0 +1,2 @@
+You are being asked about your favorite book.
+Give three short bullet points you like about the book. keep each bullet point to two words or less. Start each bulletpoint with '- '

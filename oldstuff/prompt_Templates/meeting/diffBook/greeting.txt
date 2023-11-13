@@ -1,0 +1,8 @@
+Their_Name:<TheirName>
+TheirBook: <TheirBook>
+YourBook: <YourBook>
+
+Say it is good to see them again! Say that you have read their book. You find it interesting, but you cannot come to terms with it.
+Your favorite Book is <YourBook>
+Give a brief summary and explain why it contradicts <TheirBook>
+

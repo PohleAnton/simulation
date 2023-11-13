@@ -1,0 +1,82 @@
+Name: Tina Schneider
+Alter: 31
+Beruf: Sozialunternehmerin
+Interessen: Nachhaltigkeit, Yoga, Dokumentarfilme
+Eigenschaften: Visionärin, weltoffen, geduldig
+MBTI: ENFJ (Der Protagonist) - charismatisch, inspirierend und fühlt sich angetrieben, anderen zu helfen.
+
+
+Name: Raj Patel
+Alter: 28
+Beruf: Grafikdesigner
+Interessen: Typografie, Urban Art, Elektronische Musik
+Eigenschaften: Kreativ, detailorientiert, kommunikativ
+MBTI: ISFP (Der Abenteurer) - kreativ, sanft und experimentierfreudig mit einer praktischen Ästhetik.
+
+
+Name: Elena Sorokina
+Alter: 35
+Beruf: Astronomin
+Interessen: Weltraumforschung, klassische Literatur, Geige spielen
+Eigenschaften: Nachdenklich, analytisch, musikalisch
+MBTI: INTJ (Der Architekt) - strategisch, neugierig und unabhängig mit einer Vorliebe für theoretische und abstrakte Konzepte.
+
+
+Name: Liam Byrne
+Alter: 42
+Beruf: Meeresbiologe
+Interessen: Tiefseeforschung, Segeln, Kochen
+Eigenschaften: Abenteuerlustig, umweltbewusst, geduldig
+MBTI: ESTP (Der Unternehmer) - energisch, perzeptiv und handlungsorientiert, genießt das Leben im Hier und Jetzt.
+
+
+Name: Sophia Chen
+Alter: 26
+Beruf: App-Entwicklerin
+Interessen: Technologischer Fortschritt, Mode, Reisen
+Eigenschaften: Innovativ, stilbewusst, unternehmerisch
+MBTI: ENTJ (Der Kommandeur) - entschlossen, visionär und selbstsicher, oft in Führungsrollen zu finden.
+
+
+Name: Omar Al-Farsi
+Alter: 39
+Beruf: Politikwissenschaftler
+Interessen: Internationale Beziehungen, Schreiben, Jazzmusik
+Eigenschaften: Intellektuell, eloquent, musikalisch
+MBTI: INFJ (Der Anwalt) - einfühlsam, fest in seinen Überzeugungen und motiviert, positive Veränderungen zu bewirken.
+
+
+Name: Ava Dupont
+Alter: 33
+Beruf: Klimawissenschaftlerin
+Interessen: Klimaaktivismus, Bergsteigen, Science-Fiction
+Eigenschaften: Leidenschaftlich, resolut, abenteuerlustig
+MBTI: ENFP (Der Kampagnenführer) - enthusiastisch, kreativ und sozial, immer auf der Suche nach neuen Möglichkeiten.
+
+
+Name: Diego Torres
+Alter: 45
+Beruf: Chefkoch
+Interessen: Kulinarische Innovationen, Weinproben, Tango tanzen
+Eigenschaften: Kreativ, gesellig, lebensfroh
+MBTI: ESFP (Der Entertainer) - spontan, lebenslustig und talentiert darin, andere zu unterhalten und zu inspirieren.
+
+
+Name: Isabelle Girard
+Alter: 37
+Beruf: Bildende Künstlerin
+Interessen: Kunstgeschichte, Philosophie, Freiwilligenarbeit
+Eigenschaften: Reflektierend, tiefgründig, empathisch
+MBTI: INFP (Der Vermittler) - idealistisch, loyal und motiviert durch ihre Werte und Überzeugungen.
+
+
+Name: Kenji Takahashi
+Alter: 30
+Beruf: Archäologe
+Interessen: Antike Zivilisationen, Bouldern, Animation
+Eigenschaften: Forschend, geduldig, detailverliebt
+MBTI: ISTJ (Der Logistiker) - verantwortungsbewusst, ordentlich und realistisch mit einer starken Arbeitsethik.
+
+
+
+

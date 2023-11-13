@@ -1,0 +1,10 @@
+TheirName: <Name>
+
+Book: <Book>
+
+TheirIdeas: <Bulletlist>
+
+Say their name and that it is nice to see them again. Say that you have read the book (again).
+Give three short bullet points you like about the book. keep each bullet point to two words or less.
+Start each bulletpoint with '- '
+You might refer to their ideas, but you can also come up with different ones.

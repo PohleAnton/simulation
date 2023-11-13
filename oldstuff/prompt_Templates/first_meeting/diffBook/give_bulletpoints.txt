@@ -1,0 +1,3 @@
+FavoriteBook: <Random_Book>
+Be polite.
+Give three short bullet points you like about your favorite book. keep each bullet point to two words or less. Start each bulletpoint with '- '

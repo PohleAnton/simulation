@@ -1,0 +1,6 @@
+PyYAML~=6.0.1
+openai~=0.28.1
+mariadb~=1.1.8
+pinecone-client
+
+chromadb~=0.4.17

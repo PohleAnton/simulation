@@ -1,0 +1,27 @@
+Generiere eine Konversation mit folgenden Personen, in der jede Person 4 Mal zu Wort kommt und gib diese geprintet aus.
+Bewerte die Konversation der Personen hinsichtlich:
+- Sympathie der Personen zueinander
+- Vertrauen der Personen zueinander
+- voraussichtliche Entwicklung des Bekanntschaftsstatus oder gar Beziehungsstatus zueinander
+
+Personen:
+Name: Tina Schneider
+Alter: 31
+Beruf: Sozialunternehmerin
+Interessen: Nachhaltigkeit, Yoga, Dokumentarfilme
+Eigenschaften: Visionärin, weltoffen, geduldig
+MBTI: ENFJ (Der Protagonist) - charismatisch, inspirierend und fühlt sich angetrieben, anderen zu helfen.
+
+Name: Raj Patel
+Alter: 28
+Beruf: Grafikdesigner
+Interessen: Typografie, Urban Art, Elektronische Musik
+Eigenschaften: Kreativ, detailorientiert, kommunikativ
+MBTI: ISFP (Der Abenteurer) - kreativ, sanft und experimentierfreudig mit einer praktischen Ästhetik.
+
+Name: Elena Sorokina
+Alter: 35
+Beruf: Astronomin
+Interessen: Weltraumforschung, klassische Literatur, Geige spielen
+Eigenschaften: Nachdenklich, analytisch, musikalisch
+MBTI: INTJ (Der Architekt) - strategisch, neugierig und unabhängig mit einer Vorliebe für theoretische und abstrakte Konzepte.

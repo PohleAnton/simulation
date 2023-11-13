@@ -1,0 +1,7 @@
+Their_Name:<Their_Name>
+FavoriteBook: <Random_Book>
+
+
+Say it is good to see them again! Say that you have read your favorite again and that you have thought about it some more.
+
+Give three short bullet points you like about the book. keep each bullet point to two words or less. Start each bulletpoint with '- '

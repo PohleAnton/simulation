@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "openai": "^4.0.0",
+    "pulsar-client": "^1.9.0"
+  }
+}
