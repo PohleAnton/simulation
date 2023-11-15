@@ -9,7 +9,7 @@ import os
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
 openai.api_key = os.getenv('openai')
-
+print(openai.api_key)
 # Now you can use the Database class
 database = Database()
 print("Person:", Person)
