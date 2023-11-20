@@ -6,24 +6,21 @@ import chromadb
 import datetime
 import os
 
-from langchain.embeddings import SentenceTransformerEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores.chroma import Chroma
 
-print(os.getcwd())
-os.path.isdir('./FocusedConversationApproach')
-os.path.isfile('config.yml')
+#print(os.getcwd())
+#os.path.isdir('./FocusedConversationApproach')
+#os.path.isfile('config.yml')
 
 with open('./FocusedConversationApproach/txtFiles/scheme.txt', 'r') as file:
     scheme = file.read()
 
-print(scheme)
+#print(scheme)
 
 with open('../config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
 openai.api_key = cfg.get('openai')
 
-participants = ['Elon Musk', 'Karl Marx', 'Peter Thiel']
+participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
 path = './FocusedConversationApproach/txtFiles/generatedProfiles/'
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -31,7 +28,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 file_name = f"{timestamp}_{','.join(participants)}.txt"
 
 full_file_path = path + file_name
-print(full_file_path)
+#print(full_file_path)
 # Create and open the text file
 with open(full_file_path, 'w') as file:
     # Write some content to the file (optional)
@@ -52,17 +49,16 @@ for participant in participants:
 with open(full_file_path, 'r') as file:
     content = file.read()
     print("File Content:")
-print(content)
+#print(content)
 
 prompt_p1 = (
     "Write a conversation with the following setup: "
     "1. Topics: Bring up naturally what might be in their interest. "
     "2. Informal, emotional conversation between two people who’ve known each other for a long time and don’t like each other "
     "very much. They both enjoy intense intellectual arguments and do not hold back.Deep Talk "
-    "3. Detailed, long conversation. "
+    "3. Detailed, LONG conversation. "
     "4. Setting: New Year‘s Eve Party. Both might have had a few drinks already "
-    "5. If the simulation hypothesis comes up, let the conversation focus on that"
-    "6. Involved Individualss: "
+    "5. Involved Individuals: "
 )
 
 conversation = openai.ChatCompletion.create(
@@ -71,6 +67,7 @@ conversation = openai.ChatCompletion.create(
         {"role": "user", "content": prompt_p1 + content}
     ]
 )
+print(conversation['choices'][0]['message']['content'])
 
 functions = [
     {
@@ -109,7 +106,7 @@ functions = [
                                         },
                                         "liking": {
                                             "type": "string",
-                                            "description": "How much the participant liked that part of the conversation on this scale: Loves it. Likes it. Does not care about it. Does not like it. Hates it. Don't be to kind in your rating. Write like this:  {name} {scale} + this part of the conversation"
+                                            "description": "How much the participant liked that part of the conversation on this scale: Loves it. Likes it. Does not care about it. Does not like it. Hates it. Don't be to kind in your rating. Write like this:  {name} {scale}"
                                         }
                                     }
                                 }
@@ -122,10 +119,11 @@ functions = [
     },
 ]
 
+#ich nehme hier vorerst GPT-4, weil 3.5 kein vernünftiges JSON zurückgiobt...
 vector_test = openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
-        {"role": "user", "content": conversation}
+        {"role": "user", "content": conversation["choices"][0]["message"]["content"]}
     ]
     ,
     functions=functions,
@@ -136,6 +134,15 @@ vector_test = openai.ChatCompletion.create(
 content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
 data = json.loads(content)
 print(content)
+
+print(conversation['choices'][0]['message']['content'])
+
+##ToDo
+#hier könnte man sowas einbauen wie:
+if 'Simulation' or 'simulated' in content:
+    print('')
+    #do something with google api...vielleicht  irgendetwas, was roger penrose ins gespräch bringt?
+    # dann extend conversation with roger penrose
 
 # ergebnis ist eine map bzw. ein string, in dem die konversationen in subthemen gegliedert sind und bewertungen der teilnehmer enthalten
 # beides mache ich für die vektordatenbank
@@ -159,6 +166,13 @@ for theme in data["themes"]:
     with open(file_path, 'w') as file:
         # speichern als txt, damit die dokumente in die datenbank können
         file.write(content)
+
+
+##ToDo
+#hier könnte man sowas einbauen wie:
+if 'Simulation' or 'simulated' in content:
+        print('')
+        #do something with google api...vielleicht  irgendetwas, was roger penrose ins gespräch bringt?
 
 
 # print(data)
@@ -187,7 +201,7 @@ for index, data in enumerate(file_data):
     ids.append(str(index + 1))
 
 gpt_split_db = chromadb.Client()
-gpl_split_chunks = gpt_split_db.create_collection("gpt_split")
+gpl_split_chunks = gpt_split_db.create_collection("gpt_split2")
 
 # packt die eingelesenen daten in die DB
 gpl_split_chunks.add(
@@ -200,25 +214,34 @@ test_gpl_split = gpl_split_chunks.query(
     query_texts=["Which part of the conversation Elon Musk likes the most?"],
     n_results=2
 )
+print(test_gpl_split['documents'][0])
+
+test_gpl_split = gpl_split_chunks.query(
+    query_texts=["Was there talk about simulated Reality or the simulation?"],
+    n_results=2
+)
+print(test_gpl_split['documents'][0])
 
 ##ODER einfach die chromaDB splitten lassen:
 
 chroma_split_db = chromadb.Client()
 chroma_split_chunks = chroma_split_db.create_collection("chroma_split")
 
-chroma_split_db.add(
+chroma_split_chunks.add(
     documents=[content],
     metadatas=[{"source": "{full_file_path}"}],
     ids=["doc1"]
 )
 
-test_chroma_split = chroma_split_chunks(
-    query_texts=["What was said about the simulation argument?"],
-    n_results=2,
+test_chroma_split = chroma_split_chunks.query(
+    query_texts=["What was said about the simulation argument?"]
 )
 
+test_chroma_split_2 = chroma_split_chunks.query(
+    query_texts=["What was said about materialism?"]
+)
 
-
+print(test_chroma_split_2['documents'][0])
 
 ##toDo
 # after creation of file: for each participant in participants: run prompt, file created txt files,
