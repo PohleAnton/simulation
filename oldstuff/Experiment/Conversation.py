@@ -1,7 +1,7 @@
 import json
 
-from Database.Person import Person
-from Database.Database import Database  # Import the Database class
+from oldstuff.Database.Person import Person
+from oldstuff.Database.Database import Database  # Import the Database class
 import openai
 import yaml
 import os

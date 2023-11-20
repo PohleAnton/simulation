@@ -87,7 +87,16 @@ functions = [
     },
 ]
 
-**
+vector_test = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo-1106",
+    messages=[
+        {"role": "user", "content": conversation}
+    ]
+    ,
+    functions=functions,
+    function_call={'name': 'structure_conversation'},
+
+)
 
 content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
 data = json.loads(content)
