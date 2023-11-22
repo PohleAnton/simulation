@@ -20,7 +20,7 @@ def load_docs(directory):
 
 
 documents = load_docs(directory)
-len(documents)
+print(len(documents))
 
 
 def split_docs(documents, chunk_size=1000, chunk_overlap=20):
