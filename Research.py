@@ -159,9 +159,12 @@ def get_wiki_api_instance(topic):
     wiki_wiki = wikipediaapi.Wikipedia(user_agent, language)
     page_py = wiki_wiki.page(topic)
 
-    # Schaut, ob die Seite existiert
-    print("Page - Exists: %s" % page_py.exists())
     return page_py
+
+
+def does_wiki_exists(page_py):
+    print("Page - Exists: %s" % page_py.exists())
+    return page_py.exists()
 
 
 def check_minimal_parameters(page_py):
@@ -171,7 +174,8 @@ def check_minimal_parameters(page_py):
 
 def check_all_site_parameters(page_py):
     print(segregation, "Page - Text:", page_py.text)
-    print(segregation, "Page - Categories:", page_py.categories)  # Sowas wie verwandte Themen, für weitere vertiefende Suchen
+    print(segregation, "Page - Categories:",
+          page_py.categories)  # Sowas wie verwandte Themen, für weitere vertiefende Suchen
     print(segregation, "Page - Language:", page_py.language)  # Sprache in der der Wikipedia Artikel bereitgestellt wird
     print(segregation, "Page - Sections:", page_py.sections)  # gesamter Text, inklusive Auswertung der Gliederung
     print(segregation, "Page - Links:", page_py.links)  # Links zu anderen Themen in diesem Format:
@@ -192,8 +196,12 @@ def get_wikipedia_summary(topic):
 
     page_py = get_wiki_api_instance(topic)
 
-    summary = page_py.summary
+    # Schaut, ob die Seite existiert
+    exists = does_wiki_exists(page_py)
+    if not exists:
+        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T !")
 
+    summary = page_py.summary
     check_minimal_parameters(page_py)
 
     # Gibt die andern Parameter als Ausgabe auf die Konsole, falls man testet
@@ -205,11 +213,30 @@ def get_wikipedia_summary(topic):
 def get_wikipedia_text(topic):
     page_py = get_wiki_api_instance(topic)
 
-    text = page_py.text  # ACHTUNG! Ist sehr viel, vorsichtig mit umgehen
+    # Schaut, ob die Seite existiert
+    exists = does_wiki_exists(page_py)
+    if not exists:
+        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T !")
 
+    text = page_py.text  # ACHTUNG! Ist sehr viel, vorsichtig mit umgehen
     check_minimal_parameters(page_py)
 
     return text
+
+
+def get_topics_of_conversation():  # Irgendwie auf die ChromaDB oder die TXT-Dateien zugreifen um
+    # die Konversationen oder sowas zu bekommen. Daraus müssen dann die Themen extrahiert werden
+    # um zu prüfen, ob es einen Wiki artikel dazu gibt. Falls ja, wird das Thema "weitergeleitet",
+    # sonst fällt es raus.
+
+    all_topics = []  # Alle Themen aus der Konversation
+    existing_topics = []  # Themen aus der Konversation für die ein Wiki Artikel existiert
+
+    for topic in all_topics:
+        if does_wiki_exists(get_wiki_api_instance(topic)):
+            existing_topics.append(topic)
+
+    return existing_topics
 
 
 functions = [
@@ -257,10 +284,10 @@ functions = [
     }
 ]
 
-topic = input("Thema nachdem gesucht werden soll: ")
+input_topic = input("Thema nachdem gesucht werden soll: ")
 messages = [
-    {"role": "user", "content": f"Give me a short summary about: {topic}"},
-    # {"role": "user", "content": f"Give me all information about: {topic}"}
+    {"role": "user", "content": f"Give me a short summary about: {input_topic}"},
+    # {"role": "user", "content": f"Give me all information about: {input_topic}"}
     # ACHTUNG! Hier kommt der gesamte Wikitext zurück, also sehr viele Token
 ]
 
