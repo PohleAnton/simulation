@@ -218,7 +218,7 @@ for filename in os.listdir(directory):
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 texts = text_splitter.split_documents(retriever_docs)
-conversation = text_splitter.split_text(conversation['choices'][0]['message']['content'])
+conversations = text_splitter.split_text(conversation['choices'][0]['message']['content'])
 
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
@@ -240,17 +240,31 @@ unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddin
 #unsplit_for_retrieval.persist()
 # when persisting:
 ##ToDo
-test = presplit_for_retrieval.similarity_search("What was said about human consciousness?")
-test2 = unsplit_for_retrieval.similarity_search("What was said about human consciousness?")
+test = presplit_for_retrieval.similarity_search("What was said about simulation?")
+test2 = unsplit_for_retrieval.similarity_search("What was said about class struggle?")
 
+###das wären alle dokumente, also die gesamte erinnerung
 to_add = ''.join([index.page_content for index in test])
+##oder
+to_add2=test2[0].page_content
 print(to_add)
 
 
-sequel=  openai.ChatCompletion.create(
+prompt_p2 = (
+    "Write a conversation with the following setup: "
+    "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
+    "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
+    "2. Long and detailed conversation. "
+    "3. Setting: At the beach. Everybody is relaxed "
+    "5. Involved Individuals: "
+)
+
+
+
+sequel= openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
-        {"role": "user", "content": 'Write a dialogue between Peter Thiel, Elon Musk and Karl Marx. They have met before and talked about this:' + to_add}
+        {"role": "user", "content": prompt_p2 + 'consider what they talked about before:' + to_add2}
     ]
 )
 
