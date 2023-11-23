@@ -32,8 +32,9 @@ embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 
 ##ToDo
 ##wenn die persitierte Chroma geladen werden soll. Diese wird später im Code auch als "for_retrieval" angesprochen:
-# for_retrieval = Chroma(persist_directory=persist_directory,
+# presplit_for_retrieval = Chroma(persist_directory=persist_directory,
 #                        embedding_function=embeddings)
+#unsplit_for_retrieval = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
 ##ToDo
 
 
@@ -124,11 +125,11 @@ functions = [
                                     "properties": {
                                         "name": {
                                             "type": "string",
-                                            "description": "Name of the participant"
+                                            "description": "Name of the participant. Write like this: {name} thinks:"
                                         },
                                         "summary": {
                                             "type": "string",
-                                            "description": "Summary of what they said about that topic."
+                                            "description": "Summary of what they said about that topic. Start like this: \"I think...\""
                                         },
                                         "liking": {
                                             "type": "string",
@@ -217,6 +218,7 @@ for filename in os.listdir(directory):
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 texts = text_splitter.split_documents(retriever_docs)
+conversation = text_splitter.split_text(conversation['choices'][0]['message']['content'])
 
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
@@ -227,16 +229,19 @@ os.environ['OPENAI_API_KEY'] = cfg.get('openai')
 embeddings_alt = OpenAIEmbeddings()
 ##ToDo
 
-for_retrieval = Chroma.from_documents(documents=texts, embedding=embeddings)
-
+presplit_for_retrieval = Chroma.from_documents(documents=texts, embedding=embeddings)
+unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddings)
 
 ##ToDo
 # when persisting:
-# for_retrieval = Chroma.from_documents(documents=texts, embedding=embeddings, persist_directory=persist_directory)
-# for_retrieval.persist()
+# presplit_for_retrieval = Chroma.from_documents(documents=texts, embedding=embeddings, persist_directory=persist_directory)
+# presplit_for_retrieval.persist()
+#unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddings, persist_directory=persist_directory)
+#unsplit_for_retrieval.persist()
 # when persisting:
 ##ToDo
-test = for_retrieval.similarity_search("What was said about human consciousness?", k=2)
+test = presplit_for_retrieval.similarity_search("What was said about human consciousness?")
+test2 = unsplit_for_retrieval.similarity_search("What was said about human consciousness?")
 
 to_add = ''.join([index.page_content for index in test])
 print(to_add)
