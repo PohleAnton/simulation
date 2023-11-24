@@ -34,7 +34,7 @@ embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 ##wenn die persitierte Chroma geladen werden soll. Diese wird später im Code auch als "for_retrieval" angesprochen:
 # presplit_for_retrieval = Chroma(persist_directory=persist_directory,
 #                        embedding_function=embeddings)
-#unsplit_for_retrieval = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
+# unsplit_for_retrieval = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
 ##ToDo
 
 
@@ -115,7 +115,7 @@ functions = [
                         "properties": {
                             "theme": {
                                 "type": "string",
-                                "description": "Each theme that has been brought up"
+                                "description": "Each theme that has been brought up - what the most fitting Wikipedia-article might be called"
                             },
                             "content": {
                                 "type": "array",
@@ -133,7 +133,7 @@ functions = [
                                         },
                                         "liking": {
                                             "type": "string",
-                                            "description": "How much the participant liked that part of the conversation on this scale: very much, a little, very little, not at all. Always write like this:  {name} likes it {rating}"
+                                            "description": "How much the participant liked that part of the conversation on a scale from 1 - 5, 1 being the lowest, 5 the highest score. Always write like this:  {name} gives it a {rating}"
                                         }
                                     }
                                 }
@@ -182,13 +182,15 @@ directory = './FocusedConversationApproach/txtFiles/ConversationChunks'
 target_dir = './FocusedConversationApproach/txtFiles/ConversationChunks/used/'
 os.makedirs(directory, exist_ok=True)
 
+wikipedia = []
+
 for theme in data["themes"]:
     theme_title = theme["theme"].replace(' ', '_').replace('\'', '').replace('\"', '').replace('?', '')
     filename = f"{base_title}_{theme_title}.txt"
     file_path = os.path.join(directory, filename)
-
+    wikipedia.append(theme['theme'])
     # hier wird der inhalt erzeugt und die zusammenfassung des gesagten mit der einschätzung konkateniert. ist nicht so schnell erklärt, schaut euch am besten mal einen der strings an
-    if 'linking' in theme['content'][0]:
+    if 'liking' in theme['content'][0]:
         content = '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]])
     else:
         content = '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]])
@@ -236,8 +238,8 @@ unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddin
 # when persisting:
 # presplit_for_retrieval = Chroma.from_documents(documents=texts, embedding=embeddings, persist_directory=persist_directory)
 # presplit_for_retrieval.persist()
-#unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddings, persist_directory=persist_directory)
-#unsplit_for_retrieval.persist()
+# unsplit_for_retrieval = Chroma.from_texts(texts=conversation, embedding=embeddings, persist_directory=persist_directory)
+# unsplit_for_retrieval.persist()
 # when persisting:
 ##ToDo
 test = presplit_for_retrieval.similarity_search("What was said about simulation?")
@@ -246,9 +248,8 @@ test2 = unsplit_for_retrieval.similarity_search("What was said about class strug
 ###das wären alle dokumente, also die gesamte erinnerung
 to_add = ''.join([index.page_content for index in test])
 ##oder
-to_add2=test2[0].page_content
+to_add2 = test2[0].page_content
 print(to_add)
-
 
 prompt_p2 = (
     "Write a conversation with the following setup: "
@@ -259,9 +260,7 @@ prompt_p2 = (
     "5. Involved Individuals: "
 )
 
-
-
-sequel= openai.ChatCompletion.create(
+sequel = openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
         {"role": "user", "content": prompt_p2 + 'consider what they talked about before:' + to_add2}
