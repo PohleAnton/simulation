@@ -10,14 +10,23 @@ import urllib.parse
 import requests
 from bs4 import BeautifulSoup
 
-import wikipedia
+# import wikipedia
 import wikipediaapi
 
+"""
+import sys
+from FocusedConversationApproach.GeneratePersons import wikipedia
+
+sys.path.append("FocusedConversationApproach/GeneratePersons")
+
+possible_wiki_topics = wikipedia
+print(possible_wiki_topics)
+"""
 config = yaml.safe_load(open("config.yml"))
 openai.api_key = config.get('KEYS', {}).get('openai')
 google_api_key = config.get('KEYS', {}).get('google')
 search_engine_id = config.get('KEYS', {}).get('search_engine_id')
-segregation = ("<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>\n\n")
+segregation = ("\n\n<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>\n\n")
 
 
 # https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=de
@@ -45,7 +54,7 @@ def make_request(payload):
     return response.json()
 
 
-def research_web(query):  # kann für die google APi dann erweiter werden falls nötig
+def research_web(query):  # kann für die google APi dann erweiter werden, falls nötig
     # Hier die Logik für die Websuche implementieren und das Ergebnis zurückgeben
     result_list = []
 
@@ -148,12 +157,12 @@ def research_web(query):  # kann für die google APi dann erweiter werden falls 
     # return result_list[:3]
 
 
-def get_wiki_api_instance(topic):
+def get_wikipedia_api_instance(topic):
     # Setze deinen eindeutigen Benutzeragenten
     user_agent = 'Python_research_Wikipedia (paul.mcwater@gmail.com)'
 
     # Lege eine Sprache fest in welcher der Artikel sein soll
-    language = "de"
+    language = "en"
 
     # Erstelle die Wikipedia-API-Instanz mit angegebenen Benutzeragenten und in gewünschter Sprache
     wiki_wiki = wikipediaapi.Wikipedia(user_agent, language)
@@ -162,9 +171,11 @@ def get_wiki_api_instance(topic):
     return page_py
 
 
-def does_wiki_exists(page_py):
-    print("Page - Exists: %s" % page_py.exists())
-    return page_py.exists()
+def does_wikipedia_topic_exists(page_py, topic):
+    exists = page_py.exists()
+    if not exists:
+        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T :", topic)
+    return exists
 
 
 def check_minimal_parameters(page_py):
@@ -194,15 +205,14 @@ def get_wikipedia_summary(topic):
 
     # Option 2: wikipediaapi package
 
-    page_py = get_wiki_api_instance(topic)
+    page_py = get_wikipedia_api_instance(topic)
 
     # Schaut, ob die Seite existiert
-    exists = does_wiki_exists(page_py)
-    if not exists:
-        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T !")
+    does_wikipedia_topic_exists(page_py, topic)
 
     summary = page_py.summary
-    check_minimal_parameters(page_py)
+    # Für Testzwecke
+    # check_minimal_parameters(page_py)
 
     # Gibt die andern Parameter als Ausgabe auf die Konsole, falls man testet
     # check_all_site_parameters(page_py, segregation)
@@ -211,32 +221,113 @@ def get_wikipedia_summary(topic):
 
 
 def get_wikipedia_text(topic):
-    page_py = get_wiki_api_instance(topic)
+    page_py = get_wikipedia_api_instance(topic)
 
     # Schaut, ob die Seite existiert
-    exists = does_wiki_exists(page_py)
-    if not exists:
-        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T !")
+    does_wikipedia_topic_exists(page_py, topic)
 
     text = page_py.text  # ACHTUNG! Ist sehr viel, vorsichtig mit umgehen
+
+    # Für Testzwecke
     check_minimal_parameters(page_py)
 
-    return text
+    return json.dumps(text)
 
 
-def get_topics_of_conversation():  # Irgendwie auf die ChromaDB oder die TXT-Dateien zugreifen um
+# Sucht für das übergebene Thema den expliziten Titel des Wikipedia Eintrags
+def get_wikipedia_title(topic):
+    page_py = get_wikipedia_api_instance(topic)
+
+    return page_py.title
+
+
+def get_topics_for_wiki_search(given_topics):  # Irgendwie auf die ChromaDB oder die TXT-Dateien zugreifen um
     # die Konversationen oder sowas zu bekommen. Daraus müssen dann die Themen extrahiert werden
     # um zu prüfen, ob es einen Wiki artikel dazu gibt. Falls ja, wird das Thema "weitergeleitet",
     # sonst fällt es raus.
 
-    all_topics = []  # Alle Themen aus der Konversation
     existing_topics = []  # Themen aus der Konversation für die ein Wiki Artikel existiert
 
-    for topic in all_topics:
-        if does_wiki_exists(get_wiki_api_instance(topic)):
+    for topic in given_topics:
+        if does_wikipedia_topic_exists(get_wikipedia_api_instance(topic), topic):
             existing_topics.append(topic)
 
     return existing_topics
+
+
+# Führt API Anfragen aus und ruft, falls nötig die Research-Funktionen auf
+def get_gpt_response_with_research(topic):
+    messages = [
+        {"role": "user", "content": f"Give me a short summary about: {topic}"},
+        # {"role": "user", "content": f"Give me all information about: {input_topic}"}
+        # ACHTUNG! Hier kommt der gesamte Wikitext zurück, also sehr viele Token
+    ]
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=messages,
+        functions=functions
+    )
+    response_message = response.choices[0].message
+
+    if response_message.get("function_call"):
+        # Funktionen aufrufen
+        function_name = response_message["function_call"]["name"]
+        function_args = json.loads(response_message["function_call"]["arguments"])
+        function_lookup = {
+            "get_wikipedia_summary": get_wikipedia_summary,
+            "get_wikipedia_text": get_wikipedia_text
+        }
+        function_to_call = function_lookup[function_name]
+        function_response = function_to_call(**function_args)
+
+        # Infos aus function call und response an GPT geben
+        messages.append(response_message)  # extend conversation with assistant's reply
+        messages.append(
+            {
+                "role": "function",
+                "name": function_name,
+                "content": function_response[0:10000],
+            }
+        )  # mit der response erweitern und zweite Anfrage stellen
+        second_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0613",
+            messages=messages,
+        )
+        research_result_content = second_response.choices[0].message.content
+        print(segregation, "GPT - Response for: ", topic, "\n\n", research_result_content)
+        return research_result_content
+
+
+# Führt für jedes Thema eine API Anfrage aus und sammelt die Responses
+def get_response_for_every_topic():
+    # Für Testzwecke
+    test_topics = ["Mark Zuckerberg", "Java (programming language)", "Python French", "Python programming language",
+                   "Facebook", "Simulation hypothesis"]
+
+    # Für Themen aus Konversationen müsste hier "wikipedia" stehen, dazu oben "from X import wikipedia"
+    topics_to_search = get_topics_for_wiki_search(test_topics)
+
+    # Liste für Dictionaries
+    research_result_list = []
+    for topic in topics_to_search:
+        # neues Dictionary erstellen
+        result_entry = {}
+
+        # GPT Response
+        gpt_result = get_gpt_response_with_research(topic)
+
+        # Daten zum Dictionary hinzufügen
+        result_entry["topic"] = topic
+        result_entry["content"] = gpt_result
+
+        # Dictionary zur Liste hinzufügen
+        research_result_list.append(result_entry)
+
+        # Für Testzwecke
+        searched_topics.append(topic)
+
+    return research_result_list
 
 
 functions = [
@@ -256,7 +347,7 @@ functions = [
     },
     {
         "name": "get_wikipedia_text",
-        "description": "A function to search Wikipedia for a specific topic and get a text with all the information",
+        "description": "A function to search Wikipedia for a specific topic and get all information of this topic",
         "parameters": {
             "type": "object",
             "properties": {
@@ -283,45 +374,10 @@ functions = [
         }
     }
 ]
+searched_topics = []
+result_list = get_response_for_every_topic()
 
-input_topic = input("Thema nachdem gesucht werden soll: ")
-messages = [
-    {"role": "user", "content": f"Give me a short summary about: {input_topic}"},
-    # {"role": "user", "content": f"Give me all information about: {input_topic}"}
-    # ACHTUNG! Hier kommt der gesamte Wikitext zurück, also sehr viele Token
-]
-
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo-1106",
-    messages=messages,
-    functions=functions
-)
-
-response_message = response.choices[0].message
-
-if response_message.get("function_call"):
-    # Step 3: call the function
-    # Note: the JSON response may not always be valid; be sure to handle errors
-    function_name = response_message["function_call"]["name"]
-    function_args = json.loads(response_message["function_call"]["arguments"])
-    function_lookup = {
-        "get_wikipedia_summary": get_wikipedia_summary,
-        "get_wikipedia_text": get_wikipedia_text
-    }
-    function_to_call = function_lookup[function_name]
-    function_response = function_to_call(**function_args)
-
-    # Step 4: send the info on the function call and function response to GPT
-    messages.append(response_message)  # extend conversation with assistant's reply
-    messages.append(
-        {
-            "role": "function",
-            "name": function_name,
-            "content": function_response[0:10000],
-        }
-    )  # extend conversation with function response
-    second_response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo-0613",
-        messages=messages,
-    )  # get a new response from GPT where it can see the function response
-    print(second_response.choices[0].message.content)
+print("result_list:", result_list)
+for result in result_list:
+    print(result.get("wiki_topic"))
+print("searched_topics:", searched_topics)
