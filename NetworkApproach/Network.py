@@ -85,13 +85,8 @@ def get_gpt_response_with_function(content, functions):
     return response
 
 
-def get_response_message(response):
-    response_message = response.choices[0].message
-    return response_message
-
-
 def get_gpt_response(content):
-    print(Research.segregation, "Content für Message:", content)
+    print(Research.segregation, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
         messages=[
@@ -102,41 +97,66 @@ def get_gpt_response(content):
 
 
 def get_participants_filepath():
-    file_name = f"{timestamp}_{','.join(participants)}.txt"
+    # Antons Code
+    file_name = f"{timestamp}_{','.join(initial_participants)}.txt"
 
-    full_file_path = path + file_name
+    full_file_path = profile_directory + file_name
     # print(full_file_path)
     return full_file_path
 
 
-def create_and_write_participants_file():
-    full_file_path = get_participants_filepath()
-    # Create and open the text file
-    with open(full_file_path, 'w') as file:
-        # Write some content to the file (optional)
-        file.write("")
+def get_file_name(participant):
+    modified_name = participant.replace(" ", "_")
+    file_name = f"{modified_name}.txt"
+    return file_name
 
 
-def fill_schemes_for_participants():
-    for participant in participants:
-        input_content = scheme + " for " + participant
-        intro = get_gpt_response(input_content)
-        with open(get_participants_filepath(), 'a') as file:
-            file.write('\n')
-            file.write('\n')
-            file.write(intro.choices[0].message.content)
+def write_in_file(file_path, content, mode):
+    with open(file_path, mode) as file:
+        file.write(content)
 
 
-def get_scheme():
-    with open('./FocusedConversationApproach/txtFiles/scheme.txt', 'r') as file:
-        return file.read()
-
-
-def read_participants_file():
-    with open(get_participants_filepath(), 'r') as file:
+def read_from_file(file_path):
+    with open(file_path, 'r') as file:
         content = file.read()
-        print(Research.segregation, "File Content:", content)
     return content
+
+
+def fill_schemes_for_participants(participants):
+    for participant in participants:
+        # Prüfen, ob bereits ein Profil für denjenigen vorliegt, falls nein, dann wir eines erzeugt
+        file_path = profile_directory + "/" + get_file_name(participant)
+        print(Research.segregation, f"File path: {file_path}")
+        if not does_file_exists(file_path):
+            # GPT generiert neues Profil
+            input_content = scheme + " for " + participant
+            response = get_gpt_response(input_content)
+            profile = get_response_content(response)
+            write_in_file(file_path, profile, "x")
+            print(Research.segregation, f"New profile for: {participant}\n", profile)
+        else:
+            print(Research.segregation, f"Profile for {participant} already exists")
+
+
+def does_file_exists(file_path):
+    exits = os.path.isfile(file_path)
+    if exits:
+        print(Research.segregation, f"File \"{file_path}\" does exist")
+    else:
+        print(Research.segregation, f"File \"{file_path}\" doesn't exist")
+    return exits
+
+
+def join_profiles(participants):
+    profiles_of_participants = ""
+    for participant in participants:
+        file_path = profile_directory + "/" + get_file_name(participant)
+        profile_to_add = "("
+        if does_file_exists(file_path):
+            profile_to_add = read_from_file(file_path)
+        profiles_of_participants += profile_to_add
+        profiles_of_participants += ")\n\n"
+    return profiles_of_participants
 
 
 def get_best_document(given_query):
@@ -145,13 +165,13 @@ def get_best_document(given_query):
 
 
 def create_and_write_chroma_for_conversation(given_conversation):
-    conversations = text_splitter.split_text(given_conversation['choices'][0]['message']['content'])
-    print(Research.segregation, "Conversation - Splitter", conversations)
+    conversation = text_splitter.split_text(get_response_content(given_conversation))
+    print(Research.segregation, "Conversation - Splitter\n", conversation)
     return Chroma.from_texts(texts=given_conversation, embedding=embeddings)
 
 
-def get_response_content(given_conversation):
-    return given_conversation.choices[0].message.content
+def get_response_content(given_response):
+    return given_response.choices[0].message.content
 
 
 def build_prompt_for_conversation(given_participants):
@@ -159,7 +179,7 @@ def build_prompt_for_conversation(given_participants):
     liking = ["don’t like", "like", "tolerate", "hate"]
     linking_strength = ["very much", "", "much", "a bit", "on professional level"]
     place = ["At the beach", "At a small bar", "At university"]
-    feeling = ["relaxed"]
+    feeling = ["relaxed", "aggressive"]
 
     chosen_relationship = get_random_element_from_list(relationships)
     chosen_liking = get_random_element_from_list(liking)
@@ -202,12 +222,12 @@ def get_random_element_from_list(given_list):
 
 def get_structured_conversation_with_gpt(given_conversation):
     vector_test = get_gpt_response_with_function('structure_conversation'
-                                                 + given_conversation["choices"][0]["message"]["content"],
+                                                 + get_response_content(given_conversation),
                                                  gp_functions)
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
     structured_data = json.loads(content)
-    print(Research.segregation, "structured_data - Content:", content)
+    print(Research.segregation, "structured_data - Content:\n", content)
     return structured_data
 
 
@@ -222,17 +242,48 @@ def extract_possible_topics_for_wikipedia():
     return conversation_topics
 
 
-def write_wiki_in_file(file_path, wiki_content):
-    with open(file_path, 'w') as file:
-        file.write(wiki_content)
+def print_json_in_pretty(given_json):
+    pretty_json_str = json.dumps(given_json, indent=4)
+    print(Research.segregation, "JSON in pretty:\n\n", pretty_json_str)
+
+
+def organize_wiki_search(given_topics, participants):
+    for topic in given_topics:
+        file_name = get_file_name(topic)
+        file_path = wiki_directory + "/" + file_name
+
+        # Falls das Thema schon gespeichert ist
+        if does_file_exists(file_path):
+            file_content = read_from_file(file_path)
+
+            # Überprüfe, ob einer der Teilnehmer im Inhalt enthalten ist
+            for participant in participants:
+                if participant in file_content.split("Knowing:")[1]:
+                    print(f"{participant} was found in Wiki-txt about {topic}.")
+                else:
+                    # Namen in Datei einfügen
+                    write_in_file(file_path, ", " + participant, "a")
+                    print(f"{participant} wasn't found in Wiki-txt about {topic} and was added")
+
+        # Falls das Thema noch nicht gespeichert ist
+        else:
+            # Suche mit Research Klasse
+            gpt_result = Research.get_gpt_response_with_research(topic)
+
+            # Erstelle das Textfile
+            write_in_file(file_path, f"Explanation:\n{gpt_result}\n\nKnowing:\n{', '.join(participants)}", "w")
+            print(Research.segregation, f"File {file_name} was created and {participants} were added.")
 
 
 # GPT und Txt Zeug
-participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
-path = './FocusedConversationApproach/txtFiles/generatedProfiles/'
-target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
+initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
+test_participants = ['Horst Schlemmer', 'Rainer Zufall']
+profile_directory = 'NetworkApproach/txtFiles/Profiles'
+chunk_directory = 'NetworkApproach/txtFiles/ConversationChunks'
+wiki_directory = 'NetworkApproach/txtFiles/WikiSearches'
+# target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-scheme = get_scheme()
+scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
 embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 prompt_p1 = (
     "Write a conversation with the following setup: "
@@ -253,43 +304,42 @@ prompt_p2 = (
 )
 
 # Schemas ausfüllen
-fill_schemes_for_participants()
-file_content = read_participants_file()
+fill_schemes_for_participants(initial_participants)
 
 # erste Conversation erstellen
-first_conversation = get_gpt_response(prompt_p1 + file_content)
-
+prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
+first_conversation = get_gpt_response(prompt_for_first_conversation)
 print(Research.segregation, "Response - Content", get_response_content(first_conversation))
 
+# Konversation in Chunks packen
 data = get_structured_conversation_with_gpt(first_conversation)
+print_json_in_pretty(data)
+
 # zum Benennen
 base_title = data["title"].replace(' ', '_')
 
 # zum Extrahieren der Themen nötig
-directory = './FocusedConversationApproach/txtFiles/ConversationChunks'
-target_dir = './FocusedConversationApproach/txtFiles/ConversationChunks/used/'
+directory = 'FocusedConversationApproach/txtFiles/ConversationChunks'
+target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used/'
 os.makedirs(directory, exist_ok=True)
 
 # Datenbank Zeug
-loader = DirectoryLoader('./FocusedConversationApproach/txtFiles/ConversationChunks', glob="./*.txt",
-                         loader_cls=TextLoader)
+loader = DirectoryLoader(directory, glob="./*.txt", loader_cls=TextLoader)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversation)
+
+# Suche bei Wikipedia anstoßen
+extracted_topic = extract_possible_topics_for_wikipedia()
+organize_wiki_search(extracted_topic, test_participants)
 
 # das erste - also am besten passende dokument - aus dieser Suche ist:
 query = "What was said about simulation hypothesis?"
 document = get_best_document(query)
 
 # zweite Conversation erstellen
-prompt_p3 = build_prompt_for_conversation(participants) + ' consider what they talked about before: ' + document
+prompt_p3 = build_prompt_for_conversation(initial_participants) + ' consider what they talked about before: ' + document
 sequel = get_gpt_response(prompt_p3)
 print(Research.segregation, "Response - Content", get_response_content(sequel))
-
-extracted_topic = extract_possible_topics_for_wikipedia()
-
-# Liste aus Dictionaries der Wiki-Suchen
-research_result_list = Research.get_response_for_every_topic(extracted_topic, participants)
-print(Research.segregation, "Suchergebnisse mit Metadaten", research_result_list)
 
 """
 TODO:
