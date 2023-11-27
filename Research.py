@@ -13,15 +13,8 @@ from bs4 import BeautifulSoup
 # import wikipedia
 import wikipediaapi
 
-"""
-import sys
-from FocusedConversationApproach.GeneratePersons import wikipedia
+__author__ = "Sebastian Koch"
 
-sys.path.append("FocusedConversationApproach/GeneratePersons")
-
-possible_wiki_topics = wikipedia
-print(possible_wiki_topics)
-"""
 config = yaml.safe_load(open("config.yml"))
 openai.api_key = config.get('KEYS', {}).get('openai')
 google_api_key = config.get('KEYS', {}).get('google')
@@ -241,11 +234,7 @@ def get_wikipedia_title(topic):
     return page_py.title
 
 
-def get_topics_for_wiki_search(given_topics):  # Irgendwie auf die ChromaDB oder die TXT-Dateien zugreifen um
-    # die Konversationen oder sowas zu bekommen. Daraus müssen dann die Themen extrahiert werden
-    # um zu prüfen, ob es einen Wiki artikel dazu gibt. Falls ja, wird das Thema "weitergeleitet",
-    # sonst fällt es raus.
-
+def get_topics_for_wiki_search(given_topics):
     existing_topics = []  # Themen aus der Konversation für die ein Wiki Artikel existiert
 
     for topic in given_topics:
@@ -300,13 +289,13 @@ def get_gpt_response_with_research(topic):
 
 
 # Führt für jedes Thema eine API Anfrage aus und sammelt die Responses
-def get_response_for_every_topic():
+def get_response_for_every_topic(given_topics, participants):
     # Für Testzwecke
     test_topics = ["Mark Zuckerberg", "Java (programming language)", "Python French", "Python programming language",
                    "Facebook", "Simulation hypothesis"]
 
     # Für Themen aus Konversationen müsste hier "wikipedia" stehen, dazu oben "from X import wikipedia"
-    topics_to_search = get_topics_for_wiki_search(test_topics)
+    topics_to_search = get_topics_for_wiki_search(given_topics)
 
     # Liste für Dictionaries
     research_result_list = []
@@ -320,12 +309,10 @@ def get_response_for_every_topic():
         # Daten zum Dictionary hinzufügen
         result_entry["topic"] = topic
         result_entry["content"] = gpt_result
+        result_entry["knowing"] = participants
 
         # Dictionary zur Liste hinzufügen
         research_result_list.append(result_entry)
-
-        # Für Testzwecke
-        searched_topics.append(topic)
 
     return research_result_list
 
@@ -374,10 +361,3 @@ functions = [
         }
     }
 ]
-searched_topics = []
-result_list = get_response_for_every_topic()
-
-print("result_list:", result_list)
-for result in result_list:
-    print(result.get("wiki_topic"))
-print("searched_topics:", searched_topics)
