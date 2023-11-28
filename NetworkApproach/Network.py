@@ -1,17 +1,14 @@
+import datetime
 import json
 import os
 import random
 
 import openai
-import datetime
-
 import yaml
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.embeddings import SentenceTransformerEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.chroma import Chroma
-
-import Research
 
 # from FocusedConversationApproach.GeneratePersons import functions as gp_functions
 
@@ -19,6 +16,8 @@ import Research
 # Logik, Ablauf, Kürzungen, Methoden etc. von mir
 __author__ = "Sebastian Koch"
 __credits__ = ["Sebastian Koch", "Anton Pohle"]
+
+from NetworkApproach import Research2 as Research
 
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
@@ -302,7 +301,7 @@ prompt_p2 = (
     "3. Setting: At the beach. Everybody is relaxed "
     "5. Involved Individuals: "
 )
-
+print(Research.segregation)
 # Schemas ausfüllen
 fill_schemes_for_participants(initial_participants)
 
@@ -331,6 +330,8 @@ unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversat
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_possible_topics_for_wikipedia()
 organize_wiki_search(extracted_topic, test_participants)
+
+organize_wiki_search("Mark Zuckerberg", "Elon Musk")
 
 # das erste - also am besten passende dokument - aus dieser Suche ist:
 query = "What was said about simulation hypothesis?"

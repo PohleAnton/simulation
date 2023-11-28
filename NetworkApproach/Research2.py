@@ -15,7 +15,7 @@ import wikipediaapi
 
 __author__ = "Sebastian Koch"
 
-config = yaml.safe_load(open("../config.yml"))
+config = yaml.safe_load(open("config.yml"))
 openai.api_key = config.get('KEYS', {}).get('openai')
 google_api_key = config.get('KEYS', {}).get('google')
 search_engine_id = config.get('KEYS', {}).get('search_engine_id')
