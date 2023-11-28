@@ -1,17 +1,11 @@
-import html
 import json
-import os
+import re
 
 import openai
-import yaml
-import re
-import urllib.request
-import urllib.parse
 import requests
-from bs4 import BeautifulSoup
-
 # import wikipedia
 import wikipediaapi
+import yaml
 
 __author__ = "Sebastian Koch"
 
@@ -19,7 +13,7 @@ config = yaml.safe_load(open("config.yml"))
 openai.api_key = config.get('KEYS', {}).get('openai')
 google_api_key = config.get('KEYS', {}).get('google')
 search_engine_id = config.get('KEYS', {}).get('search_engine_id')
-segregation = ("\n\n<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>\n\n")
+segregation_str = ("\n\n<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< ----- >>>>>\n\n")
 
 
 # https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=de
@@ -167,25 +161,28 @@ def get_wikipedia_api_instance(topic):
 def does_wikipedia_topic_exists(page_py, topic):
     exists = page_py.exists()
     if not exists:
-        print(segregation, "D I E S E   S E I T E   E X I S T I E R T   N I C H T :", topic)
+        print(segregation_str, "There is no Wikipedia article about:", topic)
+    else:
+        print(segregation_str, "This is the Wikipedia article about:", topic)
     return exists
 
 
 def check_minimal_parameters(page_py):
-    print(segregation, "Page - Title:", page_py.title)
-    print(segregation, "Page - Summary:", page_py.summary)
+    print(segregation_str, "Page - Title:", page_py.title)
+    print(segregation_str, "Page - Summary:", page_py.summary)
 
 
 def check_all_site_parameters(page_py):
-    print(segregation, "Page - Text:", page_py.text)
-    print(segregation, "Page - Categories:",
+    print(segregation_str, "Page - Text:", page_py.text)
+    print(segregation_str, "Page - Categories:",
           page_py.categories)  # Sowas wie verwandte Themen, für weitere vertiefende Suchen
-    print(segregation, "Page - Language:", page_py.language)  # Sprache in der der Wikipedia Artikel bereitgestellt wird
-    print(segregation, "Page - Sections:", page_py.sections)  # gesamter Text, inklusive Auswertung der Gliederung
-    print(segregation, "Page - Links:", page_py.links)  # Links zu anderen Themen in diesem Format:
+    print(segregation_str, "Page - Language:",
+          page_py.language)  # Sprache in der der Wikipedia Artikel bereitgestellt wird
+    print(segregation_str, "Page - Sections:", page_py.sections)  # gesamter Text, inklusive Auswertung der Gliederung
+    print(segregation_str, "Page - Links:", page_py.links)  # Links zu anderen Themen in diesem Format:
     # name der Wikipedia Seite
     # 'Abstract Window Toolkit': Abstract Window Toolkit (id: ??, ns: 0)
-    print(segregation, "Page - Namespace", page_py.namespace)
+    print(segregation_str, "Page - Namespace", page_py.namespace)
 
 
 def get_wikipedia_summary(topic):
@@ -204,6 +201,7 @@ def get_wikipedia_summary(topic):
     does_wikipedia_topic_exists(page_py, topic)
 
     summary = page_py.summary
+    print(segregation_str, "Wiki-API Response:\n\n")
     # Für Testzwecke
     # check_minimal_parameters(page_py)
 
@@ -234,21 +232,21 @@ def get_wikipedia_title(topic):
     return page_py.title
 
 
-def get_topics_for_wiki_search(given_topics):
-    existing_topics = []  # Themen aus der Konversation für die ein Wiki Artikel existiert
+def try_wiki_search(given_topic):
+    research_result = None
+    researched_with_wiki = False
+    if does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic):
+        research_result = get_gpt_response_with_research(given_topic)
+        researched_with_wiki = True
 
-    for topic in given_topics:
-        if does_wikipedia_topic_exists(get_wikipedia_api_instance(topic), topic):
-            existing_topics.append(topic)
-
-    return existing_topics
+    return researched_with_wiki, research_result
 
 
 # Führt API Anfragen aus und ruft, falls nötig die Research-Funktionen auf
 def get_gpt_response_with_research(topic):
     messages = [
-        {"role": "user", "content": f"Give me a short summary about: {topic}"},
-        # {"role": "user", "content": f"Give me all information about: {input_topic}"}
+        {"role": "user", "content": f"Give me a short summary of the wikipedia article about: {topic}"},
+        # {"role": "user", "content": f"Give me all information of the wikipeda article about: {input_topic}"}
         # ACHTUNG! Hier kommt der gesamte Wikitext zurück, also sehr viele Token
     ]
 
@@ -284,10 +282,11 @@ def get_gpt_response_with_research(topic):
             messages=messages,
         )
         research_result_content = second_response.choices[0].message.content
-        print(segregation, "GPT - Response for: ", topic, "\n\n", research_result_content)
+        print(segregation_str, "GPT - Response for: ", topic, "\n\n", research_result_content)
         return research_result_content
 
 
+"""
 # Führt für jedes Thema eine API Anfrage aus und sammelt die Responses
 def get_response_for_every_topic(given_topics, participants):
     # Für Testzwecke
@@ -315,7 +314,7 @@ def get_response_for_every_topic(given_topics, participants):
         research_result_list.append(result_entry)
 
     return research_result_list
-
+"""
 
 functions = [
     {
