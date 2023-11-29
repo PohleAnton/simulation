@@ -127,20 +127,57 @@ def read_from_file(file_path):
     return content
 
 
-def fill_schemes_for_participants(participants):
+def fill_profile_schemes_for_participants(participants):
     for participant in participants:
         # Prüfen, ob bereits ein Profil für denjenigen vorliegt, falls nein, dann wir eines erzeugt
         file_path = profile_directory + "/" + get_file_name(participant)
         print(Research.segregation_str, f"File path: {file_path}")
         if not does_file_exists(file_path):
             # GPT generiert neues Profil
-            input_content = scheme + " for " + participant
+            input_content = profile_scheme + " for " + participant
             response = get_gpt_response(input_content)
             profile = get_response_content(response)
             write_in_file(file_path, profile, "x")
             print(Research.segregation_str, f"New profile for: {participant}\n", profile)
         else:
             print(Research.segregation_str, f"Profile for {participant} already exists")
+
+
+def get_filled_knowledge_scheme_for_participant(participant, given_topics):
+    # file_path = knowledge_directory + "/" + get_file_name(participant)
+    input_content = (f"Organize these topics {given_topics} into the following scheme for {participant}!\n"
+                     + knowledge_scheme)
+    response = get_gpt_response(input_content)
+    filled_knowledge_scheme = get_response_content(response)
+    # write_in_file(file_path, knowledge, "x") # erstellt neue Datei
+    print(Research.segregation_str, f"Knowledge scheme: {participant}\n\n", filled_knowledge_scheme)
+    return filled_knowledge_scheme
+
+
+def add_knowledge_to_profile(participant, given_knowledge):
+    old_file_path = profile_directory + "/" + get_file_name(participant)
+    new_file_path = knowledge_directory + "/" + get_file_name(participant)
+    profile = read_from_file(old_file_path)
+    do_know_str = "Topics with knowledge:"
+    dont_know_str = "Topics without knowledge:"
+    extracted_knowledge = given_knowledge.split(do_know_str)[1]
+    extracted_knowledge = extracted_knowledge.split(dont_know_str)[0]
+    research_knowledge = given_knowledge.split(dont_know_str)[1]
+    extracted_knowledge = extracted_knowledge + ", " + research_knowledge
+
+    research_list = [s.strip() for s in research_knowledge.split(",")]
+
+    organize_wiki_search(research_list)
+
+    additional_str = "Additional Knowledge:"
+    if does_file_exists(new_file_path):
+        to_write = ", " + extracted_knowledge
+        write_in_file(new_file_path, to_write, "a")
+    elif does_file_exists(old_file_path):
+        to_write = profile + "\n" + additional_str + " " + extracted_knowledge
+        write_in_file(new_file_path, to_write, "x")
+    else:
+        print(f"File doesn't exists, whether here {new_file_path} nor here {old_file_path}")
 
 
 def does_file_exists(file_path):
@@ -252,34 +289,25 @@ def print_json_in_pretty(given_json):
     print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
 
 
-def organize_wiki_search(given_topics, participants):
+def organize_wiki_search(given_topics):
+
     for topic in given_topics:
         file_name = get_file_name(topic)
         file_path = wiki_directory + "/" + file_name
 
-        # Falls das Thema schon gespeichert ist
-        if does_file_exists(file_path):
-            file_content = read_from_file(file_path)
-
-            # Überprüfe, ob einer der Teilnehmer im Inhalt enthalten ist
-            for participant in participants:
-                if participant in file_content.split("Knowing:")[1]:
-                    print(f"{participant} was found in Wiki-txt about {topic}.")
-                else:
-                    # Namen in Datei einfügen
-                    write_in_file(file_path, ", " + participant, "a")
-                    print(f"{participant} wasn't found in Wiki-txt about {topic} and was added")
-
         # Falls das Thema noch nicht gespeichert ist
-        else:
+        if not does_file_exists(file_path):
             # Suche mit Research Klasse
             researched_with_wiki, research_result = Research.try_wiki_search(topic)
+            print(Research.segregation_str, "Wiki Seite gefunden:", researched_with_wiki,
+                  "\nResearch Result:", research_result)
             if researched_with_wiki:
                 # Textfile erstellen
-                write_in_file(file_path, f"Explanation:\n{research_result}\n\nKnowing:\n{', '.join(participants)}", "w")
-                print(Research.segregation_str, f"File {file_name} was created and {participants} were added.")
+                write_in_file(file_path, f"Explanation:\n{research_result}\n", "w")
+                print(Research.segregation_str, f"File {file_name} was created.")
             else:
-                print(Research.segregation_str, f"There will be no file for {topic} due to lack of a Wikipedia-article.")
+                print(Research.segregation_str,
+                      f"There will be no file for {topic} due to lack of a Wikipedia-article.")
 
 
 # GPT und Txt Zeug
@@ -288,9 +316,11 @@ test_participants = ['Horst Schlemmer', 'Rainer Zufall']
 profile_directory = 'NetworkApproach/txtFiles/Profiles'
 chunk_directory = 'NetworkApproach/txtFiles/ConversationChunks'
 wiki_directory = 'NetworkApproach/txtFiles/WikiSearches'
+knowledge_directory = 'NetworkApproach/txtFiles/Knowledge'
 # target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
+profile_scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
+knowledge_scheme = read_from_file('NetworkApproach/txtFiles/knowledge_scheme.txt')
 embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 prompt_p1 = (
     "Write a conversation with the following setup: "
@@ -318,7 +348,7 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20
 
 # Beginn des Programmablaufes
 # Schemas ausfüllen
-fill_schemes_for_participants(initial_participants)
+fill_profile_schemes_for_participants(initial_participants)
 
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
@@ -333,9 +363,12 @@ unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversat
 
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_possible_topics_for_wikipedia()
-organize_wiki_search(extracted_topic, initial_participants)
+test_topics = ["Simulation Hypothesis", "Java programming language", "Marxism", "Pay Pal"]
 
-organize_wiki_search(["Mark Zuckerberg", "Tesla", "Java programming language"], initial_participants)
+# Knowledge hinzufügen
+for participant_member in initial_participants:
+    knowledge = get_filled_knowledge_scheme_for_participant(participant_member, test_topics)
+    add_knowledge_to_profile(participant_member, knowledge)
 
 # das erste - also am besten passende dokument - aus dieser Suche ist:
 query = "What was said about simulation hypothesis?"
@@ -354,4 +387,6 @@ TODO:
 4. Sobald 2 Personen eine Konversation beendet haben, werden die Themen gesucht und entsprechend in die DB geschrieben
 5. Dauerschleife bzw. öfters wiederholen
 6. zur Generierung der neuen Konversationen sollte das Wissen (inklusive Recherche) mitgegeben werden -> sehr langer Prompt
+7. Conversation Chunks werden im Format "timpestamp_<participants>" gespeichert, dann werden alle Gespräche rausgesucht, in denen das gesuchte Thema vorgekommen ist und geprüft, was die letzte Meinung (likin) zu diesem Thema war"
+8. GPT soll Gesprächspartner anhand der Profile finden udn wieder von vorn (Sprechen, Suchen, Meinung)
 """

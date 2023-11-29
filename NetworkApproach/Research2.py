@@ -163,7 +163,7 @@ def does_wikipedia_topic_exists(page_py, topic):
     if not exists:
         print(segregation_str, "There is no Wikipedia article about:", topic)
     else:
-        print(segregation_str, "This is the Wikipedia article about:", topic)
+        print(segregation_str, "There is a Wikipedia article about:", topic)
     return exists
 
 
@@ -194,21 +194,16 @@ def get_wikipedia_summary(topic):
     """
 
     # Option 2: wikipediaapi package
-
     page_py = get_wikipedia_api_instance(topic)
-
-    # Schaut, ob die Seite existiert
-    does_wikipedia_topic_exists(page_py, topic)
-
     summary = page_py.summary
-    print(segregation_str, "Wiki-API Response:\n\n")
+    print(segregation_str, "Wiki-API Response:\n\n", summary)
     # Für Testzwecke
     # check_minimal_parameters(page_py)
 
     # Gibt die andern Parameter als Ausgabe auf die Konsole, falls man testet
     # check_all_site_parameters(page_py, segregation)
 
-    return json.dumps(summary)
+    return summary
 
 
 def get_wikipedia_text(topic):
@@ -234,12 +229,11 @@ def get_wikipedia_title(topic):
 
 def try_wiki_search(given_topic):
     research_result = None
-    researched_with_wiki = False
-    if does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic):
+    site_exists = does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic)
+    if site_exists:
         research_result = get_gpt_response_with_research(given_topic)
-        researched_with_wiki = True
 
-    return researched_with_wiki, research_result
+    return site_exists, research_result
 
 
 # Führt API Anfragen aus und ruft, falls nötig die Research-Funktionen auf
@@ -319,7 +313,7 @@ def get_response_for_every_topic(given_topics, participants):
 functions = [
     {
         "name": "get_wikipedia_summary",
-        "description": "A function to search Wikipedia for a specific topic and get its summary",
+        "description": "A function to get a summary of a Wikipedia article about a topic",
         "parameters": {
             "type": "object",
             "properties": {
