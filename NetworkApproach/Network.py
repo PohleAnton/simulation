@@ -22,7 +22,7 @@ from NetworkApproach import Research2 as Research
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 
-gp_functions = [
+functions = [
     {
         "name": "structure_conversation",
         "description": "A function divides a conversation by its themes, finds subtitles for each theme, and summarizes what each participant had to say about that subject",
@@ -70,10 +70,38 @@ gp_functions = [
             }
         }
     },
+    {
+        "name": "knowledge_organisation",
+        "description": "A function that organizes a given list of topics for a given Person into two lists, "
+                       "depending on whether the person knows enough about it "
+                       "to have a conversation about that topic or not",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topics_with_knowledge": {
+                    "type": "array",
+                    "description": "A list of topics with enough knowledge for a conversation about that topic",
+                    "items": {
+                        "type": "string",
+                        "description": "Each topic with enough knowledge"
+                    }
+                },
+                "topics_without_knowledge": {
+                    "type": "array",
+                    "description": "A list of topics where the knowledge is not enough for a conversation about that topic",
+                    "items": {
+                        "type": "string",
+                        "description": "Each topic with not enough knowledge"
+                    }
+                }
+            }
+        }
+    }
 ]
 
 
 def get_gpt_response_with_function(content, functions):
+    print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
         messages=[
@@ -104,8 +132,8 @@ def get_participants_filepath():
     return full_file_path
 
 
-def get_file_name(participant):
-    modified_name = participant.replace(" ", "_")
+def get_file_name(name):
+    modified_name = name.replace(" ", "_")
     file_name = f"{modified_name}.txt"
     return file_name
 
@@ -143,41 +171,89 @@ def fill_profile_schemes_for_participants(participants):
             print(Research.segregation_str, f"Profile for {participant} already exists")
 
 
+"""
 def get_filled_knowledge_scheme_for_participant(participant, given_topics):
     # file_path = knowledge_directory + "/" + get_file_name(participant)
-    input_content = (f"Organize these topics {given_topics} into the following scheme for {participant}!\n"
-                     + knowledge_scheme)
-    response = get_gpt_response(input_content)
+    input_content = (f"oranize_knowledge of {given_topics} for {participant}")
+    response = get_gpt_response_with_function(input_content, functions)
     filled_knowledge_scheme = get_response_content(response)
     # write_in_file(file_path, knowledge, "x") # erstellt neue Datei
-    print(Research.segregation_str, f"Knowledge scheme: {participant}\n\n", filled_knowledge_scheme)
+    print(Research.segregation_str, f"Knowledge scheme for : {participant}\n\n", filled_knowledge_scheme)
     return filled_knowledge_scheme
+"""
 
 
-def add_knowledge_to_profile(participant, given_knowledge):
+def add_knowledge_to_profile(participant, given_topics):
     old_file_path = profile_directory + "/" + get_file_name(participant)
     new_file_path = knowledge_directory + "/" + get_file_name(participant)
-    profile = read_from_file(old_file_path)
-    do_know_str = "Topics with knowledge:"
-    dont_know_str = "Topics without knowledge:"
+
+    # umständlich begonnen, mit einem Schema (.txt), was ausgefüllt worden ist, verworfen
+    """
     extracted_knowledge = given_knowledge.split(do_know_str)[1]
     extracted_knowledge = extracted_knowledge.split(dont_know_str)[0]
     research_knowledge = given_knowledge.split(dont_know_str)[1]
     extracted_knowledge = extracted_knowledge + ", " + research_knowledge
-
     research_list = [s.strip() for s in research_knowledge.split(",")]
+    """
 
+    # GPT teilt die Themen jetzt auf
+    input_content = f"oranize_knowledge of {given_topics} for {participant}"
+    response = get_gpt_response_with_function(input_content, functions)
+    arguments = get_response_arguments(response)
+    arguments_dict = json.loads(arguments)
+    knowledge = arguments_dict["topics_with_knowledge"]
+    research_list = arguments_dict["topics_without_knowledge"]
+
+    print(Research.segregation_str, f"{participant} knows enough for: {knowledge}."
+                                    f"\nBut has to research for: {research_list}")
     organize_wiki_search(research_list)
+    knowledge = knowledge + research_list
 
     additional_str = "Additional Knowledge:"
     if does_file_exists(new_file_path):
-        to_write = ", " + extracted_knowledge
-        write_in_file(new_file_path, to_write, "a")
+        new_profile = read_from_file(new_file_path)
+        knowledge_to_add = []
+        for topic in knowledge:
+            if topic not in new_profile.split(additional_str)[1]:
+                knowledge_to_add.append(topic)
+
+        knowledge_string = ', '.join(knowledge_to_add)
+        write_in_file(new_file_path, (", " + knowledge_string), "a")
+        print(Research.segregation_str,
+              f"Knowledge {knowledge_string} were added to the knowledge profile of {participant}")
     elif does_file_exists(old_file_path):
-        to_write = profile + "\n" + additional_str + " " + extracted_knowledge
+        old_profile = read_from_file(old_file_path)
+        knowledge_string = ', '.join(knowledge)
+        to_write = old_profile + "\n" + additional_str + " " + knowledge_string
         write_in_file(new_file_path, to_write, "x")
+        print(Research.segregation_str, f"New Profile of {participant} with knowledge: \n{knowledge_string}")
     else:
-        print(f"File doesn't exists, whether here {new_file_path} nor here {old_file_path}")
+        print(Research.segregation_str,
+              f"File doesn't exists, whether here {new_file_path} nor here {old_file_path}")
+
+
+def get_additional_knowledge_of_participant(participant):
+    knowledge_file_path = knowledge_directory + "/" + get_file_name(participant)
+    participant_profile = read_from_file(knowledge_file_path)
+    knowledge = participant_profile.split("Additional Knowledge:")[1]
+    topic_list = knowledge.split(",")
+    topic_list = [topic.strip() for topic in topic_list]
+    print(Research.segregation_str, f"Necessary Wiki Files:\n{topic_list}")
+    return topic_list
+
+
+def get_content_of_wiki_files(given_topics):
+    end_content = []
+
+    # Wiki-Artikel abrufen
+    for topic in given_topics:
+        wiki_file_path = wiki_directory + "/" + get_file_name(topic)
+        end_content.append(read_from_file(wiki_file_path))
+    print(Research.segregation_str, f"Content of necessary Wiki Files:\n")
+    for content in end_content:
+        print("Content:", content)
+
+    return end_content
 
 
 def does_file_exists(file_path):
@@ -216,8 +292,12 @@ def get_response_content(given_response):
     return given_response.choices[0].message.content
 
 
-def build_prompt_for_conversation(given_participants):
-    relationships = ["’ve known each other for a long time", "’ve known each other for one day"]
+def get_response_arguments(given_response):
+    return given_response.choices[0].message.function_call.arguments
+
+
+def build_prompt_to_continue_conversation(given_participants, given_topics):
+    relationships = ["have known each other for a long time", "have known each other for one day"]
     liking = ["don’t like", "like", "tolerate", "hate"]
     linking_strength = ["very much", "", "much", "a bit", "on professional level"]
     place = ["At the beach", "At a small bar", "At university"]
@@ -229,29 +309,33 @@ def build_prompt_for_conversation(given_participants):
     chosen_place = get_random_element_from_list(place)
     chosen_feeling = get_random_element_from_list(feeling)
 
-    participants_str = ""
-    for index in range(len(given_participants)):
-        if index == 0:
-            participants_str = given_participants[index]
-        else:
-            participants_str = participants_str + ", " + given_participants[index]
+    participant_knowledge_list = []
+    necessary_content = []
+    for participant in given_participants:
+        necessary_topics = get_additional_knowledge_of_participant(participant)
+        participant_knowledge_list += ("\n", participant, ", who has additional knowledge about:", ", ".join(necessary_topics))
+        necessary_content += get_content_of_wiki_files(necessary_topics)
 
-    builded_prompt = "".join([
-        "Write a conversation with the following setup: "
+    participants_str = ". ".join(participant_knowledge_list)
+    necessary_content_str = "Here are some summaries for the additional knowledge:\n" + ". ".join(necessary_content)
+
+    builded_prompt = " ".join([
+        "Write a conversation with the following setup:"
         "1. Informal, emotional conversation between people who",
         chosen_relationship,
-        " and ",
+        "and",
         chosen_liking,
-        " each other ",
+        "each other",
         chosen_liking_strength,
-        ". They enjoy intense intellectual arguments and do not hold back. Deep Talk "
-        "2. Long and detailed conversation. "
-        "3. Setting: ",
+        ". They enjoy intense intellectual arguments and do not hold back. Deep Talk"
+        "2. Long and detailed conversation."
+        "3. Setting:",
         chosen_place,
-        ". Everybody is ",
+        ". Everybody is",
         chosen_feeling,
-        ". 5. Involved Individuals: ",
-        participants_str]
+        ". 5. Involved Individuals:",
+        participants_str,
+        necessary_content_str]
     )
 
     return builded_prompt
@@ -265,7 +349,7 @@ def get_random_element_from_list(given_list):
 def get_structured_conversation_with_gpt(given_conversation):
     vector_test = get_gpt_response_with_function('structure_conversation'
                                                  + get_response_content(given_conversation),
-                                                 gp_functions)
+                                                 functions)
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
     structured_data = json.loads(content)
@@ -290,7 +374,6 @@ def print_json_in_pretty(given_json):
 
 
 def organize_wiki_search(given_topics):
-
     for topic in given_topics:
         file_name = get_file_name(topic)
         file_path = wiki_directory + "/" + file_name
@@ -303,7 +386,7 @@ def organize_wiki_search(given_topics):
                   "\nResearch Result:", research_result)
             if researched_with_wiki:
                 # Textfile erstellen
-                write_in_file(file_path, f"Explanation:\n{research_result}\n", "w")
+                write_in_file(file_path, research_result, "w")
                 print(Research.segregation_str, f"File {file_name} was created.")
             else:
                 print(Research.segregation_str,
@@ -320,7 +403,6 @@ knowledge_directory = 'NetworkApproach/txtFiles/Knowledge'
 # target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 profile_scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
-knowledge_scheme = read_from_file('NetworkApproach/txtFiles/knowledge_scheme.txt')
 embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 prompt_p1 = (
     "Write a conversation with the following setup: "
@@ -363,19 +445,25 @@ unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversat
 
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_possible_topics_for_wikipedia()
-test_topics = ["Simulation Hypothesis", "Java programming language", "Marxism", "Pay Pal"]
+test_topics = ["Simulation Hypothesis", "Java programming language", "Marxism", "PayPal", "Communist revolution"]
 
 # Knowledge hinzufügen
 for participant_member in initial_participants:
-    knowledge = get_filled_knowledge_scheme_for_participant(participant_member, test_topics)
-    add_knowledge_to_profile(participant_member, knowledge)
+    # knowledge = get_filled_knowledge_scheme_for_participant(participant_member, test_topics)
+    add_knowledge_to_profile(participant_member, extracted_topic)
+
+# weiteres Gespräch vorbereiten
+
 
 # das erste - also am besten passende dokument - aus dieser Suche ist:
 query = "What was said about simulation hypothesis?"
 document = get_best_document(query)
 
-# zweite Conversation erstellen
-prompt_p3 = build_prompt_for_conversation(initial_participants) + ' consider what they talked about before: ' + document
+# zweite Conversation erstellen (alt)
+prompt_p3 = (
+        build_prompt_to_continue_conversation(initial_participants)
+        + " consider what they talked about before: ' + document")
+# Number of participant in participant Array needed
 sequel = get_gpt_response(prompt_p3)
 print(Research.segregation_str, "Response - Content", get_response_content(sequel))
 
