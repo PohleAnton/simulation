@@ -26,8 +26,14 @@ with open('./FocusedConversationApproach/txtFiles/scheme.txt', 'r') as file:
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
 openai.api_key = cfg.get('openai')
+os.environ['OPENAI_API_KEY'] = cfg.get('openai')
+
+
 
 persist_directory = './FocusedConversationApproach/persistedDBs'
+if not os.path.exists(persist_directory):
+    os.makedirs(persist_directory)
+
 embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 
 ##ToDo
@@ -47,10 +53,9 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 file_name = f"{timestamp}_{','.join(participants)}.txt"
 
 full_file_path = path + file_name
-# print(full_file_path)
-# Create and open the text file
+
+
 with open(full_file_path, 'w') as file:
-    # Write some content to the file (optional)
     file.write("")
 
 for participant in participants:
@@ -154,9 +159,6 @@ vector_test = openai.ChatCompletion.create(
     ]
     ,
     functions=functions,
-    # ich versuche es mal ohne den expliziten call
-    # function_call={'name': 'structure_conversation'},
-
 )
 
 content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
@@ -263,7 +265,7 @@ prompt_p2 = (
 sequel = openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
-        {"role": "user", "content": prompt_p2 + 'consider what they talked about before:' + to_add2}
+        {"role": "user", "content": prompt_p2 + 'consider what they talked about before:' + to_add}
     ]
 )
 
@@ -333,6 +335,7 @@ print(sequel['choices'][0]['message']['content'])
 #         ids.append(str(index + 1 + gpt_split_db.list_collections()[1].count()))
 #
 # print(gpt_split_db.list_collections())
+
 # print(gpt_split_db.list_collections()[1].count())
 #
 #

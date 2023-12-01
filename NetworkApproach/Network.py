@@ -21,6 +21,7 @@ from NetworkApproach import Research2 as Research
 
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
+print(openai.api_key)
 
 functions = [
     {
@@ -101,6 +102,15 @@ functions = [
 
 
 def get_gpt_response_with_function(content, functions):
+    """
+      Sends a request to OpenAI's ChatCompletion API with a specified function.
+      This function is used for more complex processing of the content.
+
+      :param content: The user input or content to be processed by GPT. Should include name of function in functions sometimes
+                        -->refac
+      :param functions: The functions Array. Likely just one
+      :return: The response from the OpenAI API after processing the content with the specified functions.
+      """
     print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
@@ -113,6 +123,12 @@ def get_gpt_response_with_function(content, functions):
 
 
 def get_gpt_response(content):
+    """
+        Sends a request to OpenAI's ChatCompletion API for a basic GPT-3.5 response.
+
+        :param content: The user input or content to be processed by GPT.
+        :return: The response from the OpenAI API based on the given content.
+        """
     print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
@@ -124,38 +140,75 @@ def get_gpt_response(content):
 
 
 def get_participants_filepath():
-    # Antons Code
-    file_name = f"{timestamp}_{','.join(initial_participants)}.txt"
+    """
+        Generates a file path for storing participant data. This path includes a timestamp
+        and the names of initial participants.
 
+        :return: A string representing the full file path for participant data.
+        """
+    file_name = f"{timestamp}_{','.join(initial_participants)}.txt"
     full_file_path = profile_directory + file_name
-    # print(full_file_path)
     return full_file_path
 
 
 def get_file_name(name):
+    """
+        Converts a given name into a file name format suitable for file operations.
+
+        :param name: The name to be converted into a file name.
+        :return: A string representing the modified file name.
+        """
     modified_name = name.replace(" ", "_")
     file_name = f"{modified_name}.txt"
     return file_name
 
 
 def get_name_from_filename(filename):
+    """
+        Extracts and converts a file name back into a more readable format, typically a person's name.
+
+        :param filename: The file name to be converted back into a name.
+        :return: A string representing the extracted and modified name.
+        """
     modified_name = filename.replace("_", " ")
     extracted_name = modified_name.replace(".txt", "")
     return extracted_name
 
 
 def write_in_file(file_path, content, mode):
+    """
+        Writes the given content to a file at the specified path.
+
+        :param file_path: The path of the file where the content will be written.
+        :param content: The content to write into the file.
+        :param mode: The mode in which the file is to be opened (e.g., 'w' for write, 'a' for append).
+        """
     with open(file_path, mode) as file:
         file.write(content)
 
 
 def read_from_file(file_path):
+    """
+        Reads and returns the content from a file located at the specified path.
+
+        :param file_path: The path of the file to read from.
+        :return: A string containing the content of the file.
+        """
     with open(file_path, 'r') as file:
         content = file.read()
     return content
 
 
 def fill_profile_schemes_for_participants(participants):
+    """
+       Fills profile schemes for each participant in the given list.
+
+       For each participant, checks if a profile file already exists. If not, a new profile is generated using GPT.
+       The generated profile is then written to a file. If a profile already exists, it is noted in the output.
+
+       :param participants (list): A list of participants for whom profiles need to be created or verified.
+       :return: None
+       """
     for participant in participants:
         # Prüfen, ob bereits ein Profil für denjenigen vorliegt, falls nein, dann wir eines erzeugt
         file_path = profile_directory + "/" + get_file_name(participant)
@@ -184,6 +237,19 @@ def get_filled_knowledge_scheme_for_participant(participant, given_topics):
 
 
 def add_knowledge_to_profile(participant, given_topics):
+    """
+    Adds knowledge about given topics to a participant's profile.
+
+    This method selects the best existing profile (preferably with knowledge) and organizes knowledge about given topics.
+    It updates the participant's profile with this new knowledge and also triggers wiki search for topics the participant needs to research.
+
+    :param
+        participant (str): The participant whose profile needs updating.
+        given_topics (list): Topics to add to the participant's knowledge profile.
+
+    :return:
+        None
+    """
     old_file_path = profile_directory + "/" + get_file_name(participant)  # Profil ohne zusätzliches Wissen
     new_file_path = knowledge_directory + "/" + get_file_name(participant)  # und mit zusätzlichem wissen
 
@@ -248,6 +314,18 @@ def add_knowledge_to_profile(participant, given_topics):
 # (alle Gesprächsthemen, von denen die GPT glaubt, der participant mit dem Profil könnte sie kennen,
 # und dann auch die worüber er nicht so viel wissen sollte, weil er diese ja dann bei Wikipedia sucht)
 def get_additional_knowledge_of_participant(participant):
+    """
+        Retrieves a list of additional knowledge topics associated with a participant.
+
+        This method reads the knowledge profile of a given participant from a file and extracts the list of topics
+        listed under 'Additional Knowledge'. It then prints and returns this list of topics.
+
+        :param:
+            participant (str): The name of the participant whose additional knowledge topics are to be retrieved.
+
+        :return:
+            list: A list of additional knowledge topics associated with the participant.
+        """
     knowledge_file_path = knowledge_directory + "/" + get_file_name(participant)
     participant_profile = read_from_file(knowledge_file_path)
     knowledge = participant_profile.split("Additional Knowledge:")[1]
@@ -259,6 +337,17 @@ def get_additional_knowledge_of_participant(participant):
 
 # ruft den Inhalt aller benötigter Wiki-Files ab
 def get_content_of_wiki_files(given_topics):
+    """
+        Retrieves content from wiki files for given topics.
+
+        This method reads files corresponding to each topic in the given list, assuming they exist, and compiles their content.
+
+        :param
+            given_topics (list): Topics for which to retrieve content from wiki files.
+
+        :return:
+            str: Aggregated content from wiki files for the given topics.
+        """
     end_content = []
 
     # Wiki-Artikel abrufen
@@ -274,6 +363,16 @@ def get_content_of_wiki_files(given_topics):
 
 
 def does_file_exists(file_path):
+    """
+        Checks if a file exists at the specified path.
+
+        Prints a message indicating whether the file exists or not.
+
+        :param
+        file_path (str): The path to the file to be checked.
+
+        :return: bool: True if the file exists, False otherwise.
+        """
     exits = os.path.isfile(file_path)
     if exits:
         print(Research.segregation_str, f"File \"{file_path}\" does exist")
@@ -284,6 +383,17 @@ def does_file_exists(file_path):
 
 # Fügt die Profile der Gesprächsteilnehmer zusammen
 def join_profiles(participants):
+    """
+       Joins the profiles of all given participants.
+
+       This method aggregates the profiles of all participants listed and returns a single string containing all profiles.
+
+       :param
+           participants (list): A list of participants whose profiles are to be joined.
+
+       :return:
+           str: A single string containing all the participants' profiles.
+       """
     profiles_of_participants = ""
     for participant in participants:
         file_path = profile_directory + "/" + get_file_name(participant)
@@ -297,12 +407,34 @@ def join_profiles(participants):
 
 # sucht das passendste Dokument zur query raus
 def get_best_document(given_query):
+    """
+        Retrieves the best document matching the given query.
+
+        This method performs a similarity search with the given query and returns the content of the most relevant document.
+
+        param:
+            given_query (str): The query to search for.
+
+        :return:
+            str: The content of the best-matching document.
+        """
     documents = unsplit_for_retrieval.similarity_search(given_query)
     return documents[0].page_content
 
 
 # ehrlich kp was das macht, frag mal Anton
 def create_and_write_chroma_for_conversation(given_conversation):
+    """
+        Creates and writes chroma data for a given conversation.
+
+        This method splits the conversation text, prints it, and then creates chroma data using the conversation texts.
+
+        param:
+            given_conversation (str): The conversation text for which chroma data is to be created.
+
+        :return:
+            Chroma: Chroma data created from the given conversation texts.
+        """
     conversation = text_splitter.split_text(get_response_content(given_conversation))
     print(Research.segregation_str, "Conversation - Splitter\n", conversation)
     return Chroma.from_texts(texts=given_conversation, embedding=embeddings)
@@ -310,16 +442,45 @@ def create_and_write_chroma_for_conversation(given_conversation):
 
 # extrahiert den Content einer GPT-Response
 def get_response_content(given_response):
+    """
+        Extracts the content from a given GPT response.
+
+        :param:
+            given_response (Response): The GPT response from which content is to be extracted.
+
+        :return:
+            str: The extracted content from the GPT response.
+        """
     return given_response.choices[0].message.content
 
 
 # Extrahiert die Arguments (nach Function Call) aus GPT-Response
 def get_response_arguments(given_response):
+    """
+        Extracts arguments from a GPT response following a function call.
+
+        :param:
+            given_response (Response): The GPT response from which arguments are to be extracted.
+
+        :return:
+            str: The extracted arguments from the GPT response.
+        """
     return given_response.choices[0].message.function_call.arguments
 
 
 # baut ein Prompt mit allen nötigen Infos zusammen, das muss noch getestet und ausgewertet werden, nur ne Idee
 def build_prompt_to_continue_conversation(given_participants):
+    """
+        Builds a prompt to continue a conversation based on given participants and additional parameters.
+
+        This method constructs a detailed prompt for generating a conversation scenario considering the relationships, feelings, and knowledge of the participants.
+
+        :param:
+            given_participants (list): Participants involved in the conversation.
+
+        :return:
+            str: A constructed prompt for continuing the conversation.
+        """
     relationships = ["have known each other for a long time", "have known each other for one day"]
     liking = ["don’t like", "like", "tolerate", "hate"]
     linking_strength = ["very much", "", "much", "a bit", "on professional level"]
@@ -365,15 +526,36 @@ def build_prompt_to_continue_conversation(given_participants):
 
 # nur für den Bau eines zufälligen Prompts benötigt, sucht halt irgendein Element aus der Liste raus
 def get_random_element_from_list(given_list):
+    """
+        Selects a random element from a given list.
+
+        :param:
+            given_list (list): The list from which to select a random element.
+
+        :return:
+            The randomly selected element from the list.
+        """
     chosen = given_list[random.randrange(len(given_list))]
     return chosen
 
 
 # Antons Code zum Strukturieren der Conversation
 def get_structured_conversation_with_gpt(given_conversation):
+    """
+        Structures a given conversation using GPT.
+
+        This method takes a given conversation, structures it using GPT, and returns the structured data.
+
+        :param:
+            given_conversation (str): The conversation to be structured.
+
+        :return:
+            dict: Structured data obtained from the GPT response.
+        """
     vector_test = get_gpt_response_with_function('structure_conversation'
                                                  + get_response_content(given_conversation),
                                                  functions)
+
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
     structured_data = json.loads(content)
@@ -383,25 +565,59 @@ def get_structured_conversation_with_gpt(given_conversation):
 
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
+    """
+        Extracts topics from a given conversation.
+
+        This method structures the conversation using GPT and extracts the themes, printing them out and returning a list of conversation topics.
+
+        :param:
+            given_conversation (str): The conversation from which topics are to be extracted.
+
+        :return
+            list: A list of topics extracted from the conversation.
+        """
     data = get_structured_conversation_with_gpt(given_conversation)
     print_json_in_pretty(data)
 
     conversation_topics = []
+    conversation_content= []
     print(Research.segregation_str, "Themes:\n")
     for theme in data["themes"]:
         conversation_topics.append(theme['theme'])
         print(theme, ", ")
+        #ab hier werden noch Strings mit den Zusammenfassungen erzeugt. Die Idee ist, diese in eine Chroma zu schreiben
+        if
 
     return conversation_topics
 
 # Gibt n Json einfach schöner aus
 def print_json_in_pretty(given_json):
+    """
+        Prints a given JSON object in a pretty format.
+
+        :param:
+            given_json (dict): The JSON object to be printed in a formatted manner.
+
+        :return:
+            None
+        """
     pretty_json_str = json.dumps(given_json, indent=4)
     print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
 
 
 # Schaut für welche Themen es bereits ein Wiki-File gibt und sucht für die Übrigen nach einem Wiki-Artikel
 def organize_wiki_search(given_topics):
+    """
+        Organizes a wiki search for given topics.
+
+        For each topic in the given list, checks if a wiki file exists. If not, searches for a Wikipedia article and creates a file with the search result.
+
+        :param:
+            given_topics (list): Topics for which to organize a wiki search.
+
+        :return:
+            None
+        """
     for topic in given_topics:
         file_name = get_file_name(topic)
         file_path = wiki_directory + "/" + file_name
@@ -425,9 +641,13 @@ def organize_wiki_search(given_topics):
 initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
 test_participants = ['Horst Schlemmer', 'Rainer Zufall']
 profile_directory = 'NetworkApproach/txtFiles/Profiles'
+os.makedirs(profile_directory, exist_ok=True)
 chunk_directory = 'NetworkApproach/txtFiles/ConversationChunks'
+os.makedirs(chunk_directory, exist_ok=True)
 wiki_directory = 'NetworkApproach/txtFiles/WikiSearches'
+os.makedirs(wiki_directory, exist_ok=True)
 knowledge_directory = 'NetworkApproach/txtFiles/Knowledge'
+os.makedirs(knowledge_directory, exist_ok=True)
 # target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 profile_scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
@@ -451,8 +671,9 @@ prompt_p2 = (
 )
 # Datenbank Zeug
 directory = 'FocusedConversationApproach/txtFiles/ConversationChunks'
-target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used/'
 os.makedirs(directory, exist_ok=True)
+target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used'
+os.makedirs(target_dir, exist_ok=True)
 loader = DirectoryLoader(directory, glob="./*.txt", loader_cls=TextLoader)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
