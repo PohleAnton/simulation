@@ -264,7 +264,8 @@ def get_content_of_wiki_files(given_topics):
     # Wiki-Artikel abrufen
     for topic in given_topics:
         wiki_file_path = wiki_directory + "/" + get_file_name(topic)
-        end_content.append(read_from_file(wiki_file_path))
+        if does_file_exists(wiki_file_path):
+            end_content.append(read_from_file(wiki_file_path))
     print(Research.segregation_str, f"Content of necessary Wiki Files:\n")
     for content in end_content:
         print("Content:", content)
