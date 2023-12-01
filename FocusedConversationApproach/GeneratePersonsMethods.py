@@ -328,8 +328,7 @@ def chroma_collection_from_txt(collection_name, folder_path):
             ##create this collection
             ##then add to this collection.
 
-
-
+            print(gpt_split_db.list_collections()[0].count())
 
 
     """
@@ -358,7 +357,7 @@ gpt_split_db.list_collections()
 if 'collection_for_chroma' not in globals():
     collection_for_chroma=chroma.create_collection('collection_name')
 
-
+sdf's_
  def read_files_from_folder(folder_path):
      files = []
      for file_name in os.listdir(folder_path):

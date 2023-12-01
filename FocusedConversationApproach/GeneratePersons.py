@@ -23,10 +23,8 @@ with open('./FocusedConversationApproach/txtFiles/scheme.txt', 'r') as file:
 
 # print(scheme)
 
-with open('config.yml', 'r') as ymlfile:
-    cfg = yaml.safe_load(ymlfile)
-openai.api_key = cfg.get('openai')
-os.environ['OPENAI_API_KEY'] = cfg.get('openai')
+openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
+os.environ['OPENAI_API_KEY'] = openai.api_key
 
 
 
@@ -163,7 +161,7 @@ vector_test = openai.ChatCompletion.create(
 
 content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
 data = json.loads(content)
-print(content)
+print(data)
 
 print(conversation['choices'][0]['message']['content'])
 
@@ -304,28 +302,27 @@ print(sequel['choices'][0]['message']['content'])
 
 # @deprecated
 # liest die dateien ein, um diese in die DB packen zu können
-# def read_files_from_folder(folder_path):
-#     files = []
-#     for file_name in os.listdir(folder_path):
-#         if file_name.endswith(".txt"):
-#             with open(os.path.join(folder_path, file_name), 'r') as file:
-#                 contents = file.read()
-#                 files.append({"file_name": file_name, "content": contents})
+def read_files_from_folder(folder_path):
+    files = []
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith(".txt"):
+            with open(os.path.join(folder_path, file_name), 'r') as file:
+                contents = file.read()
+                files.append({"file_name": file_name, "content": contents})
+     return files
 #
-#     return files
 #
+file_data = read_files_from_folder(directory)
 #
-# file_data = read_files_from_folder(directory)
-#
-# documents = []
-# metadata = []
-# ids = []
+documents = []
+metadata = []
+ids = []
 #
 
-# for index, data in enumerate(file_data):
-#         documents.append(data['content'])
-#         metadata.append({'source': data['file_name']})
-#         ids.append(str(index + 1))
+for index, data in enumerate(file_data):
+        documents.append(data['content'])
+        metadata.append({'source': data['file_name']})
+        ids.append(str(index + 1))
 #
 # # falls datenbank exisiert: bereits embedded dokumente zählen und auf index rechnen
 # if 'gpt_split_db' in globals():
@@ -340,9 +337,21 @@ print(sequel['choices'][0]['message']['content'])
 #
 #
 #
-# gpt_split_db = chromadb.Client()
+gpt_split_db = chromadb.Client()
 # new = chromadb.Client()
-# gpt_split_chunks = gpt_split_db.create_collection("gpt_split")
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=openai.api_key,
+                model_name="text-embedding-ada-002"
+            )
+gpt_split_chunks = gpt_split_db.create_collection(name="teasasasdfdasfdffdsasdft").add(documents=documents, metadatas=metadata, ids=ids)
+gpt_split_chunks.add(documents=documents, metadatas=metadata, ids=ids)
+test=gpt_split_chunks.query(query_texts="sfadf", n_results=7)
+
+print(gpt_split_db.list_collections()[0].count())
+
+
+collection = client.create_collection(name="my_collection", embedding_function=emb_fn)
+collection = client.get_collection(name="my_collection", embedding_function=emb_fn)
 # chroma_split = new.create_collection("chroma_split")
 # # packt die eingelesenen daten in die DB
 # gpt_split_chunks.add(
