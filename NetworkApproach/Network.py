@@ -71,7 +71,7 @@ functions = [
         }
     },
     {
-        "name": "knowledge_organisation",
+        "name": "organize_knowledge",
         "description": "A function that organizes a given list of topics for a given Person into two lists, "
                        "depending on whether the person knows enough about it "
                        "to have a conversation about that topic or not",
@@ -174,7 +174,7 @@ def fill_profile_schemes_for_participants(participants):
 """
 def get_filled_knowledge_scheme_for_participant(participant, given_topics):
     # file_path = knowledge_directory + "/" + get_file_name(participant)
-    input_content = (f"oranize_knowledge of {given_topics} for {participant}")
+    input_content = (f"organize_knowledge of {given_topics} for {participant}")
     response = get_gpt_response_with_function(input_content, functions)
     filled_knowledge_scheme = get_response_content(response)
     # write_in_file(file_path, knowledge, "x") # erstellt neue Datei
@@ -184,8 +184,8 @@ def get_filled_knowledge_scheme_for_participant(participant, given_topics):
 
 
 def add_knowledge_to_profile(participant, given_topics):
-    old_file_path = profile_directory + "/" + get_file_name(participant)
-    new_file_path = knowledge_directory + "/" + get_file_name(participant)
+    old_file_path = profile_directory + "/" + get_file_name(participant)  # Profil ohne zusätzliches Wissen
+    new_file_path = knowledge_directory + "/" + get_file_name(participant)  # und mit zusätzlichem wissen
 
     # umständlich begonnen, mit einem Schema (.txt), was ausgefüllt worden ist, verworfen
     """
@@ -196,8 +196,16 @@ def add_knowledge_to_profile(participant, given_topics):
     research_list = [s.strip() for s in research_knowledge.split(",")]
     """
 
+    # wählt das beste Profil aus, dass es bisher gibt (vorzugsweise mit Wissen)
+    if does_file_exists(new_file_path):
+        chosen_profile = read_from_file(new_file_path)
+    elif does_file_exists(old_file_path):
+        chosen_profile = read_from_file(old_file_path)
+    else:
+        print("Ja irgendwie gibt es da gar kein Profil was man mitgeben kann, sollte nicht so sein")
+
     # GPT teilt die Themen jetzt auf
-    input_content = f"oranize_knowledge of {given_topics} for {participant}"
+    input_content = f"organize_knowledge of {given_topics} for {chosen_profile}"
     response = get_gpt_response_with_function(input_content, functions)
     arguments = get_response_arguments(response)
     arguments_dict = json.loads(arguments)
@@ -206,11 +214,14 @@ def add_knowledge_to_profile(participant, given_topics):
 
     print(Research.segregation_str, f"{participant} knows enough for: {knowledge}."
                                     f"\nBut has to research for: {research_list}")
+
+    # Themen, die der participant nicht kennt, werden gesucht
     organize_wiki_search(research_list)
     knowledge = knowledge + research_list
 
+    # dem Profil wird das Thema des zusätzlichen Wissens zugeordnet
     additional_str = "Additional Knowledge:"
-    if does_file_exists(new_file_path):
+    if does_file_exists(new_file_path):  # hier wird fehlendes Wissen aus den Themen ergänzt
         new_profile = read_from_file(new_file_path)
         knowledge_to_add = []
         for topic in knowledge:
@@ -221,17 +232,21 @@ def add_knowledge_to_profile(participant, given_topics):
         write_in_file(new_file_path, (", " + knowledge_string), "a")
         print(Research.segregation_str,
               f"Knowledge {knowledge_string} were added to the knowledge profile of {participant}")
-    elif does_file_exists(old_file_path):
+    elif does_file_exists(old_file_path):  # Hier muss erstmal das zusätzliche Wissen zum Profil hinzugefügt werden
         old_profile = read_from_file(old_file_path)
         knowledge_string = ', '.join(knowledge)
         to_write = old_profile + "\n" + additional_str + " " + knowledge_string
         write_in_file(new_file_path, to_write, "x")
         print(Research.segregation_str, f"New Profile of {participant} with knowledge: \n{knowledge_string}")
-    else:
+    else:  # ein Fall der nicht eintreten sollte
         print(Research.segregation_str,
               f"File doesn't exists, whether here {new_file_path} nor here {old_file_path}")
 
 
+# Sucht sich die Themen raus, über die der participant zusätzliches Wissen hat.
+# Zustäzliches Wissen ist alles, was der participant auf jeden Fall kennt
+# (alle Gesprächsthemen, von denen die GPT glaubt, der participant mit dem Profil könnte sie kennen,
+# und dann auch die worüber er nicht so viel wissen sollte, weil er diese ja dann bei Wikipedia sucht)
 def get_additional_knowledge_of_participant(participant):
     knowledge_file_path = knowledge_directory + "/" + get_file_name(participant)
     participant_profile = read_from_file(knowledge_file_path)
@@ -242,6 +257,7 @@ def get_additional_knowledge_of_participant(participant):
     return topic_list
 
 
+# ruft den Inhalt aller benötigter Wiki-Files ab
 def get_content_of_wiki_files(given_topics):
     end_content = []
 
@@ -253,7 +269,7 @@ def get_content_of_wiki_files(given_topics):
     for content in end_content:
         print("Content:", content)
 
-    return end_content
+    return "\n\n".join(end_content)
 
 
 def does_file_exists(file_path):
@@ -265,6 +281,7 @@ def does_file_exists(file_path):
     return exits
 
 
+# Fügt die Profile der Gesprächsteilnehmer zusammen
 def join_profiles(participants):
     profiles_of_participants = ""
     for participant in participants:
@@ -277,26 +294,31 @@ def join_profiles(participants):
     return profiles_of_participants
 
 
+# sucht das passendste Dokument zur query raus
 def get_best_document(given_query):
     documents = unsplit_for_retrieval.similarity_search(given_query)
     return documents[0].page_content
 
 
+# ehrlich kp was das macht, frag mal Anton
 def create_and_write_chroma_for_conversation(given_conversation):
     conversation = text_splitter.split_text(get_response_content(given_conversation))
     print(Research.segregation_str, "Conversation - Splitter\n", conversation)
     return Chroma.from_texts(texts=given_conversation, embedding=embeddings)
 
 
+# extrahiert den Content einer GPT-Response
 def get_response_content(given_response):
     return given_response.choices[0].message.content
 
 
+# Extrahiert die Arguments (nach Function Call) aus GPT-Response
 def get_response_arguments(given_response):
     return given_response.choices[0].message.function_call.arguments
 
 
-def build_prompt_to_continue_conversation(given_participants, given_topics):
+# baut ein Prompt mit allen nötigen Infos zusammen, das muss noch getestet und ausgewertet werden, nur ne Idee
+def build_prompt_to_continue_conversation(given_participants):
     relationships = ["have known each other for a long time", "have known each other for one day"]
     liking = ["don’t like", "like", "tolerate", "hate"]
     linking_strength = ["very much", "", "much", "a bit", "on professional level"]
@@ -309,15 +331,14 @@ def build_prompt_to_continue_conversation(given_participants, given_topics):
     chosen_place = get_random_element_from_list(place)
     chosen_feeling = get_random_element_from_list(feeling)
 
-    participant_knowledge_list = []
-    necessary_content = []
+    necessary_topics = []
     for participant in given_participants:
-        necessary_topics = get_additional_knowledge_of_participant(participant)
-        participant_knowledge_list += ("\n", participant, ", who has additional knowledge about:", ", ".join(necessary_topics))
-        necessary_content += get_content_of_wiki_files(necessary_topics)
+        necessary_topics += get_additional_knowledge_of_participant(participant)
 
-    participants_str = ". ".join(participant_knowledge_list)
-    necessary_content_str = "Here are some summaries for the additional knowledge:\n" + ". ".join(necessary_content)
+    necessary_content = get_content_of_wiki_files(necessary_topics)
+
+    participants_str = join_profiles(given_participants)
+    necessary_content_str = f"Here are some summaries for the additional knowledge:\n {necessary_content}"
 
     builded_prompt = " ".join([
         "Write a conversation with the following setup:"
@@ -341,11 +362,13 @@ def build_prompt_to_continue_conversation(given_participants, given_topics):
     return builded_prompt
 
 
+# nur für den Bau eines zufälligen Prompts benötigt, sucht halt irgendein Element aus der Liste raus
 def get_random_element_from_list(given_list):
     chosen = given_list[random.randrange(len(given_list))]
     return chosen
 
 
+# Antons Code zum Strukturieren der Conversation
 def get_structured_conversation_with_gpt(given_conversation):
     vector_test = get_gpt_response_with_function('structure_conversation'
                                                  + get_response_content(given_conversation),
@@ -357,9 +380,12 @@ def get_structured_conversation_with_gpt(given_conversation):
     return structured_data
 
 
-def extract_possible_topics_for_wikipedia():
-    conversation_topics = []
+# Sucht sich die Themen der Conversation zusammen
+def extract_topics_of_conversation(given_conversation):
+    data = get_structured_conversation_with_gpt(given_conversation)
+    print_json_in_pretty(data)
 
+    conversation_topics = []
     print(Research.segregation_str, "Themes:\n")
     for theme in data["themes"]:
         conversation_topics.append(theme['theme'])
@@ -367,12 +393,13 @@ def extract_possible_topics_for_wikipedia():
 
     return conversation_topics
 
-
+# Gibt n Json einfach schöner aus
 def print_json_in_pretty(given_json):
     pretty_json_str = json.dumps(given_json, indent=4)
     print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
 
 
+# Schaut für welche Themen es bereits ein Wiki-File gibt und sucht für die Übrigen nach einem Wiki-Artikel
 def organize_wiki_search(given_topics):
     for topic in given_topics:
         file_name = get_file_name(topic)
@@ -393,7 +420,7 @@ def organize_wiki_search(given_topics):
                       f"There will be no file for {topic} due to lack of a Wikipedia-article.")
 
 
-# GPT und Txt Zeug
+# GPT und Txt Zeug, Konstanten festlegen
 initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
 test_participants = ['Horst Schlemmer', 'Rainer Zufall']
 profile_directory = 'NetworkApproach/txtFiles/Profiles'
@@ -438,22 +465,18 @@ first_conversation = get_gpt_response(prompt_for_first_conversation)
 print(Research.segregation_str, "Response - Content", get_response_content(first_conversation))
 
 # Konversation in Chunks packen
-data = get_structured_conversation_with_gpt(first_conversation)
-print_json_in_pretty(data)
-
 unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversation)
 
 # Suche bei Wikipedia anstoßen
-extracted_topic = extract_possible_topics_for_wikipedia()
+extracted_topic = extract_topics_of_conversation(first_conversation)
 test_topics = ["Simulation Hypothesis", "Java programming language", "Marxism", "PayPal", "Communist revolution"]
 
 # Knowledge hinzufügen
 for participant_member in initial_participants:
-    # knowledge = get_filled_knowledge_scheme_for_participant(participant_member, test_topics)
     add_knowledge_to_profile(participant_member, extracted_topic)
 
 # weiteres Gespräch vorbereiten
-
+# ... (das unten ist noch aus der ersten Version, kp ob das noch funzt
 
 # das erste - also am besten passende dokument - aus dieser Suche ist:
 query = "What was said about simulation hypothesis?"
