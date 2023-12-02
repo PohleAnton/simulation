@@ -23,7 +23,9 @@ from NetworkApproach import Research2 as Research
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions")
-print(public_discussions.count())
+
+
+
 
 functions = [
     {
@@ -219,7 +221,10 @@ def add_knowledge_to_profile(participant, given_topics):
                                     f"\nBut has to research for: {research_list}")
 
     # Themen, die der participant nicht kennt, werden gesucht
-    organize_wiki_search(research_list)
+    topic_results = organize_wiki_search(research_list)
+    for topic, research_result in topic_results.items():
+        make_and_or_use_knowledge_collection(participant, topic, research_result)
+
     knowledge = knowledge + research_list
 
     # dem Profil wird das Thema des zusätzlichen Wissens zugeordnet
@@ -379,7 +384,8 @@ def get_structured_conversation_with_gpt(given_conversation):
                                                  functions)
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
-    structured_data = json.loads(content)
+    print(content)
+    structured_data = json.dumps(content)
     print(Research.segregation_str, "structured_data - Content:\n", content)
     return structured_data
 
@@ -393,8 +399,8 @@ def extract_topics_of_conversation(given_conversation):
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
-    start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
-    print(start_number)
+    #möglicherweise muss es else public_discussions.count() + 1 sein
+    start_number = 1 if public_discussions.count() == 0 else public_discussions.count()
 
     print(Research.segregation_str, "Themes:\n")
     for theme in data["themes"]:
@@ -426,6 +432,11 @@ def print_json_in_pretty(given_json):
 
 # Schaut für welche Themen es bereits ein Wiki-File gibt und sucht für die Übrigen nach einem Wiki-Artikel
 def organize_wiki_search(given_topics):
+    ##von anton: ich modifiziere die methode mal so, dass sie mir python objekte zurückgibt. diese will ich dann
+    ##als dokumente in chroma collections stecken. Ich glaube eigentlich, dass das erzeugen von dokumenten dann obsolet
+    ##wird, lasse es aber vorerst drin
+
+    topic_results = {}
     for topic in given_topics:
         file_name = get_file_name(topic)
         file_path = wiki_directory + "/" + file_name
@@ -440,12 +451,18 @@ def organize_wiki_search(given_topics):
                 # Textfile erstellen
                 write_in_file(file_path, research_result, "w")
                 print(Research.segregation_str, f"File {file_name} was created.")
+                topic_results[topic] = research_result
             else:
                 print(Research.segregation_str,
                       f"There will be no file for {topic} due to lack of a Wikipedia-article.")
+                ###ToDo implement google seacrh here!
+                ###topic_results[topic] = research_resulst
+    ##das sollte kein problem sein - bisher wurde der return wert nicht genutzt, lediglich die operation mit dem erzeugen
+    ##der files
+    return topic_results
 
 
-def query_public_discussions(query, results: 1):
+def query_public_discussions(query, results=1):
     """
        Queries the public discussions database and returns a specified number of results.
 
@@ -462,6 +479,84 @@ def query_public_discussions(query, results: 1):
        """
     result = public_discussions.query(query_texts=query, n_results=results)
     return result
+
+
+def make_and_or_use_knowledge_collection(participant, topic, research_result):
+    collection_name = participant.replace(' ', '') + 'Knowledge'
+
+    # suche, ob der participant bereits wissen zu dem thema hat:
+    res = query_knowledge_collection(participant, topic)
+
+    found_collection = False
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            found_collection = True
+            # wemm es schon ein dokument gibt:
+            if res and res['documents'] and res['documents'][0]:
+                # hole id, diese wird für das update gebraucht
+                old_id = globals()[collection_name].get(where={'theme': topic})['ids']
+                # neues wissen mit altem kombinieren:
+                research_result = res['documents'][0][0] +'\n' + research_result
+                print(research_result)
+                # document mit neuem wissen ersetzen
+                globals()[collection_name].update(metadatas={'theme': topic}, documents=research_result, ids=old_id)
+            else:
+                # für id dynamisch bestimmen
+                # ich weiß gerade nicht, was die +1 da hinten soll...
+                start_number = 1 if globals()[collection_name].count() == 0 else globals()[collection_name].count()
+                # wissen einfügen
+                globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(start_number))
+            break
+
+    if not found_collection:
+        # falls noch nicht vorhanden: erzeuge collection und füge wissen ein
+        globals()[collection_name] = chroma.create_collection(collection_name)
+        globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(0))
+
+
+
+def query_knowledge_collection(participant, topic, n_results=1):
+    collection_name = participant.replace(' ', '') + 'Knowledge'
+    found_collection = False
+    result = []
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            found_collection = True
+            res = globals()[collection_name].query(query_texts=topic, where={'theme': topic}, n_results=n_results)
+            return res
+    if not found_collection or not result['documents'][0]:
+        result = participant + ' does not know anything about ' + topic
+        return result
+
+##example use:
+##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
+make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
+###das erzeugt die collection: ElonMuskKnowledge - Collections dürefen keine Sonderzeichen enthalten. Die Leerzeichen im Namen werden in der Methode entfernt
+###das namensscheme wird immer so sein: VornameNachnameKnowledge
+###diese collection kann wie folgt angefragt werden:
+result=query_knowledge_collection('Elon Musk', 'techno')
+###merke: der name kann mit leerzeichen übergeben werden. auch ist kenntnis vom namen der collection (bisher) unnötig
+###wegen der verarbeitung in einer anderen methode muss das ergebnis noch extrahiert werden
+print(result['documents'][0])
+###gibt: ['techno ist geil']
+###ACHTUNG: die Strings sind case - sensitive: schreibe ich 'Techno'statt 'techno' kommt nichts zurück
+###noch im prototyp status: sammelt der participant noch mehr wissen zu dem thema:
+make_and_or_use_knowledge_collection("Elon Musk", "techno", "auf technoparties werden viele drogen genommen")
+result=query_knowledge_collection('Elon Musk', 'technos')
+print(result['documents'][0])
+###wertet aus zu: ['techno ist geil\nauf technoparties werden viele drogen genommen']
+### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
+### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
+###überzeugung
+
+def make_and_or_use_conviction_collection(participant):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            globals()[collection_name].add()
+        else:
+            globals()[collection_name] = chroma.create_collection(collection_name)
+            globals()[collection_name].add()
 
 
 # GPT und Txt Zeug, Konstanten festlegen
@@ -501,9 +596,6 @@ fill_profile_schemes_for_participants(initial_participants)
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
 print(Research.segregation_str, "Response - Content", get_response_content(first_conversation))
-
-# Konversation in Chunks packen
-unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversation)
 
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_topics_of_conversation(first_conversation)
@@ -546,3 +638,5 @@ target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used/'
 os.makedirs(directory, exist_ok=True)
 loader = DirectoryLoader(directory, glob="./*.txt", loader_cls=TextLoader)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+# Konversation in Chunks packen
+unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversation)
