@@ -309,7 +309,7 @@ def read_files_from_folder(folder_path):
             with open(os.path.join(folder_path, file_name), 'r') as file:
                 contents = file.read()
                 files.append({"file_name": file_name, "content": contents})
-     return files
+    return files
 #
 #
 file_data = read_files_from_folder(directory)
@@ -350,8 +350,8 @@ test=gpt_split_chunks.query(query_texts="sfadf", n_results=7)
 print(gpt_split_db.list_collections()[0].count())
 
 
-collection = client.create_collection(name="my_collection", embedding_function=emb_fn)
-collection = client.get_collection(name="my_collection", embedding_function=emb_fn)
+collection = gpt_split_db.create_collection(name="my_collection", embedding_function=openai_ef)
+collection = gpt_split_db.get_collection(name="my_collection", embedding_function=openai_ef)
 # chroma_split = new.create_collection("chroma_split")
 # # packt die eingelesenen daten in die DB
 # gpt_split_chunks.add(

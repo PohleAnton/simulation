@@ -23,6 +23,7 @@ from NetworkApproach import Research2 as Research
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions")
+participant_collection = chroma.create_collection(name="participants")
 
 functions = [
     {
@@ -103,7 +104,7 @@ functions = [
 
 
 def get_gpt_response_with_function(content, functions):
-    print(Research.segregation_str, "Content for Message:", content)
+    # print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
         messages=[
@@ -115,7 +116,7 @@ def get_gpt_response_with_function(content, functions):
 
 
 def get_gpt_response(content):
-    print(Research.segregation_str, "Content for Message:", content)
+    # print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-1106",
         messages=[
@@ -173,6 +174,20 @@ def fill_profile_schemes_for_participants(participants):
             print(Research.segregation_str, f"Profile for {participant} already exists")
 
 
+def add_single_participant(participant):
+    start_number = 1 if participant_collection.count() == 0 else participant_collection.count() + 1
+    input_content = profile_scheme + " for " + participant
+    response = get_gpt_response(input_content)
+    profile = get_response_content(response)
+    participant_collection.add(documents=profile, metadatas={'name': participant}, ids=str(start_number))
+
+
+def get_profile(participant):
+    res = participant_collection.get(where={'name': participant})
+    return res
+
+
+
 """
 def get_filled_knowledge_scheme_for_participant(participant, given_topics):
     # file_path = knowledge_directory + "/" + get_file_name(participant)
@@ -184,21 +199,10 @@ def get_filled_knowledge_scheme_for_participant(participant, given_topics):
     return filled_knowledge_scheme
 """
 
-
 def add_knowledge_to_profile(participant, given_topics):
     old_file_path = profile_directory + "/" + get_file_name(participant)  # Profil ohne zusätzliches Wissen
     new_file_path = knowledge_directory + "/" + get_file_name(participant)  # und mit zusätzlichem wissen
 
-    # umständlich begonnen, mit einem Schema (.txt), was ausgefüllt worden ist, verworfen
-    """
-    extracted_knowledge = given_knowledge.split(do_know_str)[1]
-    extracted_knowledge = extracted_knowledge.split(dont_know_str)[0]
-    research_knowledge = given_knowledge.split(dont_know_str)[1]
-    extracted_knowledge = extracted_knowledge + ", " + research_knowledge
-    research_list = [s.strip() for s in research_knowledge.split(",")]
-    """
-
-    # wählt das beste Profil aus, dass es bisher gibt (vorzugsweise mit Wissen)
     if does_file_exists(new_file_path):
         chosen_profile = read_from_file(new_file_path)
     elif does_file_exists(old_file_path):
@@ -217,7 +221,6 @@ def add_knowledge_to_profile(participant, given_topics):
     print(Research.segregation_str, f"{participant} knows enough for: {knowledge}."
                                     f"\nBut has to research for: {research_list}")
 
-    # Themen, die der participant nicht kennt, werden gesucht
     ###dieser teil ist neu, wird für die vectordb benötigt
     topic_results = organize_wiki_search(research_list)
     print(topic_results)
@@ -227,7 +230,6 @@ def add_knowledge_to_profile(participant, given_topics):
     #return ('')
     knowledge = knowledge + research_list
 
-    # dem Profil wird das Thema des zusätzlichen Wissens zugeordnet
     additional_str = "Additional Knowledge:"
     if does_file_exists(new_file_path):  # hier wird fehlendes Wissen aus den Themen ergänzt
         new_profile = read_from_file(new_file_path)
@@ -251,6 +253,10 @@ def add_knowledge_to_profile(participant, given_topics):
               f"File doesn't exists, whether here {new_file_path} nor here {old_file_path}")
 
 
+
+
+
+
 # Sucht sich die Themen raus, über die der participant zusätzliches Wissen hat.
 # Zustäzliches Wissen ist alles, was der participant auf jeden Fall kennt
 # (alle Gesprächsthemen, von denen die GPT glaubt, der participant mit dem Profil könnte sie kennen,
@@ -261,7 +267,7 @@ def get_additional_knowledge_of_participant(participant):
     knowledge = participant_profile.split("Additional Knowledge:")[1]
     topic_list = knowledge.split(",")
     topic_list = [topic.strip() for topic in topic_list]
-    print(Research.segregation_str, f"Necessary Wiki Files:\n{topic_list}")
+    # print(Research.segregation_str, f"Necessary Wiki Files:\n{topic_list}")
     return topic_list
 
 
@@ -274,20 +280,16 @@ def get_content_of_wiki_files(given_topics):
         wiki_file_path = wiki_directory + "/" + get_file_name(topic)
         if does_file_exists(wiki_file_path):
             end_content.append(read_from_file(wiki_file_path))
-    print(Research.segregation_str, f"Content of necessary Wiki Files:\n")
+    # print(Research.segregation_str, f"Content of necessary Wiki Files:\n")
     for content in end_content:
-        print("Content:", content)
+        print('')
 
     return "\n\n".join(end_content)
 
 
 def does_file_exists(file_path):
-    exits = os.path.isfile(file_path)
-    if exits:
-        print(Research.segregation_str, f"File \"{file_path}\" does exist")
-    else:
-        print(Research.segregation_str, f"File \"{file_path}\" doesn't exist")
-    return exits
+    exists = os.path.isfile(file_path)
+    return exists
 
 
 # Fügt die Profile der Gesprächsteilnehmer zusammen
@@ -312,7 +314,7 @@ def get_best_document(given_query):
 # ehrlich kp was das macht, frag mal Anton
 def create_and_write_chroma_for_conversation(given_conversation):
     conversation = text_splitter.split_text(get_response_content(given_conversation))
-    print(Research.segregation_str, "Conversation - Splitter\n", conversation)
+    # print(Research.segregation_str, "Conversation - Splitter\n", conversation)
     return Chroma.from_texts(texts=given_conversation, embedding=embeddings)
 
 
@@ -384,28 +386,29 @@ def get_structured_conversation_with_gpt(given_conversation):
                                                  functions)
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
-    print(content)
+    # print(content)
     structured_data = json.loads(content)
-    print(Research.segregation_str, "structured_data - Content:\n", content)
+    # print(Research.segregation_str, "structured_data - Content:\n", content)
     return structured_data
 
 
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
+    print('vor bug?')
     data = get_structured_conversation_with_gpt(given_conversation)
-    print_json_in_pretty(data)
-
+    # print_json_in_pretty(data)
+    print('after bug')
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
     # möglicherweise muss es else public_discussions.count() + 1 sein
-    start_number = 1 if public_discussions.count() == 0 else public_discussions.count() +1
+    start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
 
-    print(Research.segregation_str, "Themes:\n")
+    # print(Research.segregation_str, "Themes:\n")
     for theme in data["themes"]:
         conversation_topics.append(theme['theme'])
-        print(theme, ", ")
+        # print(theme, ", ")
         chroma_ids.append(start_number)
         start_number += 1
         if 'liking' in theme['content'][0]:
@@ -419,7 +422,7 @@ def extract_topics_of_conversation(given_conversation):
 
         # add chroma stuff:
     chroma_ids = [str(id) for id in chroma_ids]
-    print(chroma_ids)
+    # print(chroma_ids)
     public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
     return conversation_topics
 
@@ -427,7 +430,11 @@ def extract_topics_of_conversation(given_conversation):
 # Gibt n Json einfach schöner aus
 def print_json_in_pretty(given_json):
     pretty_json_str = json.dumps(given_json, indent=4)
-    print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
+    # print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
+
+
+
+
 
 
 # Schaut für welche Themen es bereits ein Wiki-File gibt und sucht für die Übrigen nach einem Wiki-Artikel
@@ -445,14 +452,18 @@ def organize_wiki_search(given_topics):
         if not does_file_exists(file_path):
             # Suche mit Research Klasse
             researched_with_wiki, research_result = Research.try_wiki_search(topic)
-            print(Research.segregation_str, "Wiki Seite gefunden:", researched_with_wiki,
-                  "\nResearch Result:", research_result)
+            print('hallooooo')
+            # print(Research.segregation_str, "Wiki Seite gefunden:", researched_with_wiki,
+            # "\nResearch Result:", research_result)
             if researched_with_wiki:
+                print('hi')
                 # Textfile erstellen
                 write_in_file(file_path, research_result, "w")
-                print(Research.segregation_str, f"File {file_name} was created.")
+                # print(Research.segregation_str, f"File {file_name} was created.")
                 ###neu, für vektorDB
                 topic_results[topic] = research_result
+                print('research_result: ' + research_result)
+                print('topic: ' + topic_results[topic])
             else:
                 print(Research.segregation_str,
                       f"There will be no file for {topic} due to lack of a Wikipedia-article.")
@@ -530,6 +541,38 @@ def query_knowledge_collection(participant, topic, n_results=1):
     # return result
 
 
+###für den prompt
+def get_string_from_knowledge(participant, topic):
+    res = query_knowledge_collection(participant, topic)
+    if len(res['documents'][0]) == 1:
+        return res['documents'][0][0]
+    else:
+        return participant + ' does not know anything about ' + topic
+
+
+###das wäre das ganze akumulierte wissen von participant zu topic
+# knowledge_for_prompt = get_string_from_knowledge('Elon Musk', 'techno')
+
+
+def make_and_or_use_conviction_collection(participant):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            globals()[collection_name].add()
+            globals()[collection_name].add()
+        else:
+            globals()[collection_name] = chroma.create_collection(collection_name)
+            globals()[collection_name].add()
+
+
+def has_participant_knowledge(participant, topic):
+    res = query_knowledge_collection(participant, topic)
+    if res and res['documents'] and res['documents'][0]:
+        return True
+    else:
+        return False
+
+
 ##example use:
 ##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
 make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
@@ -548,34 +591,10 @@ make_and_or_use_knowledge_collection("Elon Musk", "techno", "auf technoparties w
 result = query_knowledge_collection('Elon Musk', 'techno')
 print(result['documents'][0])
 
-
 ###wertet aus zu: ['techno ist geil\nauf technoparties werden viele drogen genommen']
 ### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
 ### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
 ###überzeugung
-
-
-###für den prompt
-def get_string_from_knowledge(participant, topic):
-    res = query_knowledge_collection(participant, topic)
-    if len(res['documents'][0]) == 1:
-        return res['documents'][0][0]
-    else:
-        return participant + ' does not know anything about ' + topic
-
-###das wäre das ganze akumulierte wissen von participant zu topic
-knowledge_for_prompt = get_string_from_knowledge('Elon Musk', 'techno')
-
-
-def make_and_or_use_conviction_collection(participant):
-    collection_name = participant.replace(' ', '') + 'Conviction'
-    for collection in chroma.list_collections():
-        if collection.name == collection_name:
-            globals()[collection_name].add()
-            globals()[collection_name].add()
-        else:
-            globals()[collection_name] = chroma.create_collection(collection_name)
-            globals()[collection_name].add()
 
 
 # GPT und Txt Zeug, Konstanten festlegen
@@ -622,13 +641,28 @@ print(Research.segregation_str, "Response - Content", get_response_content(first
 
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_topics_of_conversation(first_conversation)
-test_topics = ["Simulation Hypothesis", "Java programming language", "Marxism", "PayPal", "Communist revolution"]
-
+test_topics = ["Marxism", "Communist revolution"]
+res = query_knowledge_collection('Horst', 'Communist revolution')
+test_participants = ['Horst', 'Rainer']
+top = ["Blau", "Rosa"]
+fill_profile_schemes_for_participants(initial_participants)
+res = participant_collection.query(query_texts='Horst', n_results=1)
 # Knowledge hinzufügen
-for participant_member in initial_participants:
-    add_knowledge_to_profile(participant_member, extracted_topic)
+for participant in initial_participants:
+    add_knowledge_to_profile(participant, top)
 
-print(chroma.delete_collection('PeterThielKnowledge'))
+
+
+res=query_knowledge_collection('Elon Musk', 'The Emperor\'s New Mind')
+
+print(has_participant_knowledge('Horst', 'Communist revolution'))
+
+tst = HorstKnowledge.get(where={'theme': 'Communis revolution'})
+
+for topic in top:
+    print(get_string_from_knowledge('Horst', topic))
+
+res = query_knowledge_collection('Horst', 'Communist revolution')
 
 # weiteres Gespräch vorbereiten
 # ... (das unten ist noch aus der ersten Version, kp ob das noch funzt
