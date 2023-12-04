@@ -5,6 +5,19 @@ import random
 import chromadb
 import openai
 import yaml
+from chromadb.api.types import (
+    Document,
+    Documents,
+    Embedding,
+    Image,
+    Images,
+    EmbeddingFunction,
+    Embeddings,
+    is_image,
+    is_document,
+)
+from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from langchain.document_loaders import DirectoryLoader, TextLoader
 from langchain.embeddings import SentenceTransformerEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,15 +27,21 @@ from langchain.vectorstores.chroma import Chroma
 
 # Teile des GPT-Codes und der ganze Chroma und txt Code kommt von Anton (hier reinkopiert)
 # Logik, Ablauf, Kürzungen, Methoden etc. von mir
-__author__ = "Sebastian Koch"
+__author__ = "Anton Pohle"
 __credits__ = ["Sebastian Koch", "Anton Pohle"]
 
 from NetworkApproach import Research2 as Research
 
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
+
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=openai.api_key,
+                model_name="text-embedding-ada-002"
+            )
+
 chroma = chromadb.Client()
-public_discussions = chroma.create_collection(name="public_discussions")
+public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
 
 functions = [
@@ -62,7 +81,7 @@ functions = [
                                         },
                                         "liking": {
                                             "type": "string",
-                                            "description": "How much the participant liked that part of the conversation on a scale from 1 - 5, 1 being the lowest, 5 the highest score. Always write like this:  {name} gives it a {rating}"
+                                            "description": "How much the participant liked that part of the conversation on this scale: a lot, a little, not at all. Always write like this:  {name} likes it  {rating}"
                                         }
                                     }
                                 }
@@ -81,9 +100,36 @@ functions = [
             "properties": {
                 "knowledge": {
                     "type": "string",
-                    "description": "Write a short text what this person might know about this subject. Write in first person perspective."
+                    "description": "Short summary of what the person might know about the topic. If the person likely does not know anything, just write a space character"
                 }
             }
+        }
+    },
+    {
+      "name": "generate_conviction",
+      "description" : "A function that generates the likely inner thoughts of a participant about a subject",
+      "parameters": {
+          "type": "object",
+          "properties": {
+              "conviction": {
+                  "type": "string",
+                  "description": "Inner most thoughts of a participant about a subject"
+              }
+          }
+      }
+    },
+    {
+        "name": "update_conviction",
+        "description": "A function that describes the inner thoughts of a participant about a subject based on prior convictions and new arguments",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "conviction": {
+                    "type": "string",
+                    "description": "Inner most thoughts of a participant about a subject. Can change based on acquired knowledge or arguments by other people."
+                }
+            },
+            "required": ["participant", "subject", "prior conviction", "arguments"]
         }
     }
 ]
@@ -196,7 +242,16 @@ def add_knowledge_to_profile(participant, given_topics):
         )
         print(response["choices"][0]["message"]["function_call"]["arguments"])
 
-        make_and_or_use_knowledge_collection(participant, topic, clean_knowledge(response["choices"][0]["message"]["function_call"]["arguments"]) )
+        make_and_or_use_knowledge_collection(participant, topic, response["choices"][0]["message"]["function_call"]["arguments"].split(':', 1)[1])
+
+        convictions = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user", "content": f"generate_conviction for {participant} about the topic {topic}"}
+            ],
+            functions=functions
+        )
+        make_and_or_use_conviction_collection(participant, topic, convictions["choices"][0]["message"]["function_call"]["arguments"].split(':', 1)[1])
 
     topic_results = organize_wiki_search(unknown)
     print(participant)
@@ -255,17 +310,6 @@ def join_profiles(participants):
     return profiles_of_participants
 
 
-# sucht das passendste Dokument zur query raus
-def get_best_document(given_query):
-    documents = unsplit_for_retrieval.similarity_search(given_query)
-    return documents[0].page_content
-
-
-# ehrlich kp was das macht, frag mal Anton
-def create_and_write_chroma_for_conversation(given_conversation):
-    conversation = text_splitter.split_text(get_response_content(given_conversation))
-    # print(Research.segregation_str, "Conversation - Splitter\n", conversation)
-    return Chroma.from_texts(texts=given_conversation, embedding=embeddings)
 
 
 # extrahiert den Content einer GPT-Response
@@ -278,55 +322,7 @@ def get_response_arguments(given_response):
     return given_response.choices[0].message.function_call.arguments
 
 
-# baut ein Prompt mit allen nötigen Infos zusammen, das muss noch getestet und ausgewertet werden, nur ne Idee
-def build_prompt_to_continue_conversation(given_participants):
-    relationships = ["have known each other for a long time", "have known each other for one day"]
-    liking = ["don’t like", "like", "tolerate", "hate"]
-    linking_strength = ["very much", "", "much", "a bit", "on professional level"]
-    place = ["At the beach", "At a small bar", "At university"]
-    feeling = ["relaxed", "aggressive"]
 
-    chosen_relationship = get_random_element_from_list(relationships)
-    chosen_liking = get_random_element_from_list(liking)
-    chosen_liking_strength = get_random_element_from_list(linking_strength)
-    chosen_place = get_random_element_from_list(place)
-    chosen_feeling = get_random_element_from_list(feeling)
-
-    necessary_topics = []
-    for participant in given_participants:
-        necessary_topics += get_additional_knowledge_of_participant(participant)
-
-    necessary_content = get_content_of_wiki_files(necessary_topics)
-
-    participants_str = join_profiles(given_participants)
-    necessary_content_str = f"Here are some summaries for the additional knowledge:\n {necessary_content}"
-
-    builded_prompt = " ".join([
-        "Write a conversation with the following setup:"
-        "1. Informal, emotional conversation between people who",
-        chosen_relationship,
-        "and",
-        chosen_liking,
-        "each other",
-        chosen_liking_strength,
-        ". They enjoy intense intellectual arguments and do not hold back. Deep Talk"
-        "2. Long and detailed conversation."
-        "3. Setting:",
-        chosen_place,
-        ". Everybody is",
-        chosen_feeling,
-        ". 5. Involved Individuals:",
-        participants_str,
-        necessary_content_str]
-    )
-
-    return builded_prompt
-
-
-# nur für den Bau eines zufälligen Prompts benötigt, sucht halt irgendein Element aus der Liste raus
-def get_random_element_from_list(given_list):
-    chosen = given_list[random.randrange(len(given_list))]
-    return chosen
 
 
 # Antons Code zum Strukturieren der Conversation
@@ -337,9 +333,7 @@ def get_structured_conversation_with_gpt(given_conversation):
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
     print("immernoch vor bug")
-    # print(content)
     structured_data = json.loads(content)
-    # print(Research.segregation_str, "structured_data - Content:\n", content)
     return structured_data
 
 
@@ -347,16 +341,13 @@ def get_structured_conversation_with_gpt(given_conversation):
 def extract_topics_of_conversation(given_conversation):
     print('vor bug?')
     data = get_structured_conversation_with_gpt(given_conversation)
-    # print_json_in_pretty(data)
     print('after bug')
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
-    # möglicherweise muss es else public_discussions.count() + 1 sein
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
 
-    # print(Research.segregation_str, "Themes:\n")
     for theme in data["themes"]:
         conversation_topics.append(theme['theme'])
         # print(theme, ", ")
@@ -371,17 +362,10 @@ def extract_topics_of_conversation(given_conversation):
 
         chroma_metadatas.append({'theme': theme['theme']})
 
-        # add chroma stuff:
     chroma_ids = [str(id) for id in chroma_ids]
-    # print(chroma_ids)
     public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
     return conversation_topics
 
-
-# Gibt n Json einfach schöner aus
-def print_json_in_pretty(given_json):
-    pretty_json_str = json.dumps(given_json, indent=4)
-    # print(Research.segregation_str, "JSON in pretty:\n\n", pretty_json_str)
 
 
 def organize_wiki_search(given_topics):
@@ -419,8 +403,7 @@ def query_public_discussions(query, results=1):
 def make_and_or_use_knowledge_collection(participant, topic, research_result):
     collection_name = participant.replace(' ', '') + 'Knowledge'
 
-    # suche, ob der participant bereits wissen zu dem thema hat:
-    res = query_knowledge_collection(participant, topic)
+    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
 
     found_collection = False
     for collection in chroma.list_collections():
@@ -449,8 +432,9 @@ def make_and_or_use_knowledge_collection(participant, topic, research_result):
         globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(0))
 
 
-def query_knowledge_collection(participant, topic, n_results=1):
-    collection_name = participant.replace(' ', '') + 'Knowledge'
+
+def query_knowledge_conviction_collection(participant, topic,collection_type,  n_results=1):
+    collection_name = participant.replace(' ', '') + collection_type
     found_collection = False
     result = []
     for collection in chroma.list_collections():
@@ -458,26 +442,97 @@ def query_knowledge_collection(participant, topic, n_results=1):
             found_collection = True
             res = globals()[collection_name].query(query_texts=topic, where={'theme': topic}, n_results=n_results)
             return res
-    ###wahrscheinlich überflüssig, es kommt sonst ohnehin leeres array zurück
-    # if not found_collection or not result['documents'][0]:
-    # result = participant + ' does not know anything about ' + topic
-    # return result
+
+
 
 
 ###für den prompt
 def get_string_from_knowledge(participant, topic):
-    res = query_knowledge_collection(participant, topic)
+    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
     if len(res['documents'][0]) == 1:
         return res['documents'][0][0]
     else:
         return participant + ' does not know anything about ' + topic
+def get_string_from_conviction(participant, topic):
+    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
+    if len(res['documents'][0]) == 1:
+        return res['documents'][0][0]
+    else:
+        return ''
 
 
 ###das wäre das ganze akumulierte wissen von participant zu topic
 # knowledge_for_prompt = get_string_from_knowledge('Elon Musk', 'techno')
 
 
-def make_and_or_use_conviction_collection(participant):
+def make_and_or_use_conviction_collection(participant, topic, arguments='' ):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+
+    # hole die bisherige Meinung des participant
+    conv = query_knowledge_conviction_collection(participant, topic, 'Conviction')
+    found_collection = False
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            found_collection=True
+            if conv and conv['documents'] and conv['documents'][0]:
+                ###todo
+            else:
+                ###todo
+
+    if not found_collection:
+        # falls noch nicht vorhanden: erzeuge collection und füge wissen ein
+        globals()[collection_name] = chroma.create_collection(collection_name)
+        ###todo
+
+
+
+
+    prior_conviction = get_string_from_conviction(participant, topic)
+    if arguments != '':
+        res = openai.ChatCompletion(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user", "content": f"update_conviction: update this conviction: {prior_conviction} of {participant} about {topic}. Consider {arguments}"}
+            ],
+            functions=functions,
+            function_call={'name': 'update_conviction'}
+        )
+    else:
+        res = openai.ChatCompletion(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user",
+                 "content": f"generate_conviction for {participant} about subject {topic}."}
+            ],
+            functions=functions
+        )
+
+    found_collection = False
+    for collection in chroma.list_collections():
+        if collection.name == collection_name:
+            found_collection = True
+            # wemm es schon ein dokument gibt:
+            if res and res['documents'] and res['documents'][0]:
+                # hole id, diese wird für das update gebraucht
+                old_id = globals()[collection_name].get(where={'theme': topic})['ids']
+                # neues wissen mit altem kombinieren:
+                research_result = res['documents'][0][0] + '\n' + research_result
+                # document mit neuem wissen ersetzen
+                globals()[collection_name].update(metadatas={'theme': topic}, documents=research_result, ids=old_id)
+            else:
+                # für id dynamisch bestimmen
+                # ich weiß gerade nicht, was die +1 da hinten soll...
+                start_number = 1 if globals()[collection_name].count() == 0 else globals()[collection_name].count()
+                # wissen einfügen
+                globals()[collection_name].add(documents=research_result, metadatas={'theme': topic},
+                                               ids=str(start_number))
+            break
+
+    if not found_collection:
+        # falls noch nicht vorhanden: erzeuge collection und füge wissen ein
+        globals()[collection_name] = chroma.create_collection(collection_name)
+        globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(0))
+
     collection_name = participant.replace(' ', '') + 'Conviction'
     for collection in chroma.list_collections():
         if collection.name == collection_name:
@@ -489,45 +544,28 @@ def make_and_or_use_conviction_collection(participant):
 
 
 def has_participant_knowledge(participant, topic):
-    res = query_knowledge_collection(participant, topic)
+    res = query_knowledge_conviction_collection(participant, topic,'Knowledge')
     if res and res['documents'] and res['documents'][0]:
         return True
     else:
         return False
 
 
-def clean_knowledge(original_string):
-    substrings_to_remove = ["}", ":", "\"knowledge\"", "{"""]
-
-    for substring in substrings_to_remove:
-        original_string = original_string.replace(substring, "")
-
-    return original_string
 
 
-##example use:
-##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
-make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
-###das erzeugt die collection: ElonMuskKnowledge - Collections dürfen keine Sonderzeichen enthalten. Die Leerzeichen im Namen werden in der Methode entfernt
-###das namensscheme wird immer so sein: VornameNachnameKnowledge
-###diese collection kann wie folgt angefragt werden:
-result = query_knowledge_collection('Elon Musk', 'techno')
-###merke: der name kann mit leerzeichen übergeben werden. auch ist kenntnis vom namen der collection (bisher) unnötig
-###wegen der verarbeitung in einer anderen methode muss das ergebnis noch extrahiert werden
-print(result['documents'][0])
-print(len(result['documents'][0]))
-###gibt: ['techno ist geil']
-###ACHTUNG: die Strings sind case - sensitive: schreibe ich 'Techno'statt 'techno' kommt nichts zurück
-###noch im prototyp status: sammelt der participant noch mehr wissen zu dem thema:
-make_and_or_use_knowledge_collection("Elon Musk", "techno", "auf technoparties werden viele drogen genommen")
-result = query_knowledge_collection('Elon Musk', 'techno')
-print(result['documents'][0])
 
-###wertet aus zu: ['techno ist geil\nauf technoparties werden viele drogen genommen']
-### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
-### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
-###überzeugung
+def get_best_document(topic, n_results=1, precise=False, precision=0.36):
+    r = public_discussions.query(query_texts=topic, n_results=n_results)
+    if precise:
+        filtered_documents = []
+        for distance, document in zip(r['distances'][0], r['documents'][0]):
+            if distance < precision:
+                filtered_documents.append(document)
+        return filtered_documents
+    else:
+        return r['documents']
 
+print(r)
 
 # GPT und Txt Zeug, Konstanten festlegen
 initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
@@ -542,7 +580,7 @@ knowledge_directory = 'NetworkApproach/txtFiles/Knowledge'
 os.makedirs(knowledge_directory, exist_ok=True)
 # target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-profile_scheme = read_from_file('FocusedConversationApproach/txtFiles/scheme.txt')
+profile_scheme = read_from_file('./FocusedConversationApproach/txtFiles/scheme.txt')
 
 prompt_p1 = (
     "Write a conversation with the following setup: "
@@ -574,30 +612,41 @@ print(Research.segregation_str, "Response - Content", get_response_content(first
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_topics_of_conversation(first_conversation)
 
-top = ["Mushrooms"]
+top = ["Canon"]
 fill_profile_schemes_for_participants(initial_participants)
 
 # Knowledge hinzufügen
 for participant in initial_participants:
     add_knowledge_to_profile(participant, top)
 print('fertig')
+r = public_discussions.query(query_texts="simulation")
+re=get_best_document('simulation', 4, True, 0.1)
+s=get_best_document('simulation', 4, True, 0.1)
+res=query_knowledge_conviction_collection('Elon Musk', 'AI', 'Knowledge')
+print(get_string_from_knowledge('Karl Marx', 'AI'))
+t=get_best_document('simulation', 4, True, 0.39)
 
-res=query_knowledge_collection('Elon Musk', 'Mushrooms')
 
-# weiteres Gespräch vorbereiten
-# ... (das unten ist noch aus der ersten Version, kp ob das noch funzt
+res = openai.ChatCompletion(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user",
+                 "content": f"generate_conviction for the participant Karl Marx about subject Socialism."}
+            ],
+            functions=functions
+        )
+response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user", "content": f"generate_conviction for Karl Marx about the topic Socialism"}
+            ],
+            functions=functions
+        )
+print(response["choices"][0]["message"]["function_call"]["arguments"])
+print('asdfasdf')
 
-# das erste - also am besten passende dokument - aus dieser Suche ist:
-query = "What was said about simulation hypothesis?"
-document = get_best_document(query)
 
-# zweite Conversation erstellen (alt)
-prompt_p3 = (
-        build_prompt_to_continue_conversation(initial_participants)
-        + " consider what they talked about before: ' + document")
-# Number of participant in participant Array needed
-sequel = get_gpt_response(prompt_p3)
-print(Research.segregation_str, "Response - Content", get_response_content(sequel))
+
 
 """
 TODO:
@@ -611,12 +660,27 @@ TODO:
 8. GPT soll Gesprächspartner anhand der Profile finden udn wieder von vorn (Sprechen, Suchen, Meinung)
 """
 
-# altes Datenbank Zeug
-embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
-directory = 'FocusedConversationApproach/txtFiles/ConversationChunks'
-target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used/'
-os.makedirs(directory, exist_ok=True)
-loader = DirectoryLoader(directory, glob="./*.txt", loader_cls=TextLoader)
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-# Konversation in Chunks packen
-unsplit_for_retrieval = create_and_write_chroma_for_conversation(first_conversation)
+
+
+##example use für chroma queries:
+##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
+make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
+###das erzeugt die collection: ElonMuskKnowledge - Collections dürfen keine Sonderzeichen enthalten. Die Leerzeichen im Namen werden in der Methode entfernt
+###das namensscheme wird immer so sein: VornameNachnameKnowledge
+###diese collection kann wie folgt angefragt werden:
+result = query_knowledge_conviction_collection('Elon Musk', 'techno', 'Knowledge')
+###merke: der name kann mit leerzeichen übergeben werden. auch ist kenntnis vom namen der collection (bisher) unnötig
+###wegen der verarbeitung in einer anderen methode muss das ergebnis noch extrahiert werden
+print(result['documents'][0])
+print(len(result['documents'][0]))
+###gibt: ['techno ist geil']
+###ACHTUNG: die Strings sind case - sensitive: schreibe ich 'Techno'statt 'techno' kommt nichts zurück
+###noch im prototyp status: sammelt der participant noch mehr wissen zu dem thema:
+make_and_or_use_knowledge_collection("Elon Musk", "techno", "auf technoparties werden viele drogen genommen")
+result = query_knowledge_conviction_collection('Elon Musk', 'techno', 'Knowledge')
+print(result['documents'][0])
+
+###wertet aus zu: ['techno ist geil\nauf technoparties werden viele drogen genommen']
+### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
+### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
+###überzeugung
