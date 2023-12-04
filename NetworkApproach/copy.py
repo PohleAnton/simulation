@@ -74,28 +74,14 @@ functions = [
         }
     },
     {
-        "name": "organize_knowledge",
-        "description": "A function that organizes a given list of topics for a given Person into two lists, "
-                       "depending on whether the person knows enough about it "
-                       "to have a conversation about that topic or not",
+        "name": "generate_knowledge",
+        "description": "A function that generates a summary of what a given person might know about a given topic",
         "parameters": {
             "type": "object",
             "properties": {
-                "topics_with_knowledge": {
-                    "type": "array",
-                    "description": "A list of topics with enough knowledge for a conversation about that topic",
-                    "items": {
-                        "type": "string",
-                        "description": "Each topic with enough knowledge"
-                    }
-                },
-                "topics_without_knowledge": {
-                    "type": "array",
-                    "description": "A list of topics where the knowledge is not enough for a conversation about that topic",
-                    "items": {
-                        "type": "string",
-                        "description": "Each topic with not enough knowledge"
-                    }
+                "knowledge": {
+                    "type": "string",
+                    "description": "Write a short text what this person might know about this subject. Write in first person perspective."
                 }
             }
         }
@@ -196,15 +182,21 @@ def add_knowledge_to_profile(participant, given_topics):
     knows = []
     unknown = given_topics
     for topic in given_topics:
-        if (has_participant_knowledge(participant, topic)):
+        if has_participant_knowledge(participant, topic):
             unknown.remove(topic)
             knows.append(topic)
 
-    profile = get_profile(participant)['documents']
-    profile_str = profile[0]
-    profile_str += '\nAdditional Knowledge: '
-    additional_knowledge = ', '.join(knows)
-    profile_str += additional_knowledge
+    for topic in unknown:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user", "content": f"generate_knowledge for {participant} about the topic {topic}"}
+            ],
+            functions=functions
+        )
+        print(response["choices"][0]["message"]["function_call"]["arguments"])
+
+        make_and_or_use_knowledge_collection(participant, topic, clean_knowledge(response["choices"][0]["message"]["function_call"]["arguments"]) )
 
     topic_results = organize_wiki_search(unknown)
     print(participant)
@@ -504,6 +496,15 @@ def has_participant_knowledge(participant, topic):
         return False
 
 
+def clean_knowledge(original_string):
+    substrings_to_remove = ["}", ":", "\"knowledge\"", "{"""]
+
+    for substring in substrings_to_remove:
+        original_string = original_string.replace(substring, "")
+
+    return original_string
+
+
 ##example use:
 ##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
 make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
@@ -573,14 +574,15 @@ print(Research.segregation_str, "Response - Content", get_response_content(first
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_topics_of_conversation(first_conversation)
 
-top = ["Flowers", "Lollipops"]
+top = ["Mushrooms"]
 fill_profile_schemes_for_participants(initial_participants)
 
 # Knowledge hinzufügen
 for participant in initial_participants:
-    add_knowledge_to_profile(participant, extracted_topic)
+    add_knowledge_to_profile(participant, top)
+print('fertig')
 
-res=query_knowledge_collection('Elon Musk', 'Flowers')
+res=query_knowledge_collection('Elon Musk', 'Mushrooms')
 
 # weiteres Gespräch vorbereiten
 # ... (das unten ist noch aus der ersten Version, kp ob das noch funzt
