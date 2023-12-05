@@ -450,6 +450,8 @@ def get_latest_conviction(participant, topic):
     last_conviction = globals()[collection_name].get(ids=[id])
     if last_conviction['documents'][0]:
         return last_conviction['documents'][0]
+    else:
+        return ''
 
 
 
@@ -481,19 +483,12 @@ def get_string_from_knowledge(participant, topic):
 def write_conviction_collection(participant, topic, arguments=''):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # hole die bisherige Meinung des participant
-
-
-
     found_collection = False
     for collection in chroma.list_collections():
         if collection.name == collection_name:
             found_collection = True
             conv = get_latest_conviction(participant, topic)
-            #wenn es eine frühere überzeugung gibt:
-            if conv and conv['documents'] and conv['documents'][0]:
-
-                #in dem fall sollte es zwar auch ein argument geben (nach der ersten runde werden überzeugungen generiert)
+            if conv != '':
                 if arguments != '':
                     res = openai.ChatCompletion.create(
                         model="gpt-3.5-turbo-1106",
@@ -507,7 +502,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas=topic, ids=topic + timestamp_string)
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
                 #falls irgendwie keine überzeugung gegeben
                 else:
                     res = openai.ChatCompletion.create(
@@ -521,7 +516,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas=topic, ids=topic + timestamp_string)
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
             else:
                 res = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo-1106",
@@ -535,7 +530,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                 res_json = json.loads(result)
                 final = res_json['conviction']
                 globals()[collection_name].add(documents=final,
-                                               metadatas=topic, ids=topic + timestamp_string)
+                                               metadatas={'theme': topic}, ids=topic + timestamp_string)
 
     if not found_collection:
         res = openai.ChatCompletion.create(
@@ -547,8 +542,8 @@ def write_conviction_collection(participant, topic, arguments=''):
             functions=functions
         )
         result = res["choices"][0]["message"]["function_call"]["arguments"]
-        res_json= json.loads(result)
-        final=res_json['conviction']
+        res_json = json.loads(result)
+        final = res_json['conviction']
         globals()[collection_name] = chroma.create_collection(collection_name)
         globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic+timestamp_string)
 
@@ -672,3 +667,5 @@ print(result['documents'][0])
 ### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
 ### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
 ###überzeugung
+write_conviction_collection('Elon Musk', 'Simulation Hypothesis', 'THe simulation was proven wrong')
+t = get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
