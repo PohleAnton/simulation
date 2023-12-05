@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import json
 import os
 import random
@@ -240,24 +240,24 @@ def add_knowledge_to_profile(participant, given_topics):
             ],
             functions=functions
         )
-        print(response["choices"][0]["message"]["function_call"]["arguments"])
 
-        make_and_or_use_knowledge_collection(participant, topic, response["choices"][0]["message"]["function_call"]["arguments"].split(':', 1)[1])
+        res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
+        final = res['knowledge']
+        print(final)
+        #lässt gpt wissen generieren, welches die person wahrscheinlich hat
+        write_knowledge_collection(participant, topic, final)
 
-        convictions = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "user", "content": f"generate_conviction for {participant} about the topic {topic}"}
-            ],
-            functions=functions
-        )
-        make_and_or_use_conviction_collection(participant, topic, convictions["choices"][0]["message"]["function_call"]["arguments"].split(':', 1)[1])
+    #generiert eine überzeugung. zum updaten brauch es eigentlich argumente!
+    ##ToDO TESTING ONLY - THIS CAN NOT STAY HERE
+    for topic in given_topics:
+        write_conviction_collection(participant, topic)
 
     topic_results = organize_wiki_search(unknown)
     print(participant)
     print(topic_results)
     for topic, research_result in topic_results.items():
-        make_and_or_use_knowledge_collection(participant, topic, research_result)
+        write_knowledge_collection(participant, topic, research_result)
+
 
 
 
@@ -400,10 +400,11 @@ def query_public_discussions(query, results=1):
     return result
 
 
-def make_and_or_use_knowledge_collection(participant, topic, research_result):
+def write_knowledge_collection(participant, topic, research_result):
     collection_name = participant.replace(' ', '') + 'Knowledge'
 
-    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
+    res = query_knowledge_collection(participant, topic)
+
 
     found_collection = False
     for collection in chroma.list_collections():
@@ -433,8 +434,8 @@ def make_and_or_use_knowledge_collection(participant, topic, research_result):
 
 
 
-def query_knowledge_conviction_collection(participant, topic,collection_type,  n_results=1):
-    collection_name = participant.replace(' ', '') + collection_type
+def query_knowledge_collection(participant, topic,  n_results=1):
+    collection_name = participant.replace(' ', '') + 'Knowledge'
     found_collection = False
     result = []
     for collection in chroma.list_collections():
@@ -443,115 +444,123 @@ def query_knowledge_conviction_collection(participant, topic,collection_type,  n
             res = globals()[collection_name].query(query_texts=topic, where={'theme': topic}, n_results=n_results)
             return res
 
+def get_latest_conviction(participant, topic):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    id=get_latest_conviction_id(participant, topic)
+    last_conviction = globals()[collection_name].get(ids=[id])
+    if last_conviction['documents'][0]:
+        return last_conviction['documents'][0]
 
+
+
+def extract_timestamp(s):
+    timestamp_str = s[-19:]
+    return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+def get_latest_conviction_id(participant, topic):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    collection=globals()[collection_name].get(where={'theme':topic})
+    if collection['ids'][0]:
+        ids = collection['ids']
+        latest = max(ids, key=extract_timestamp)
+        return latest
 
 
 ###für den prompt
 def get_string_from_knowledge(participant, topic):
-    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
+    res = query_knowledge_collection(participant, topic)
     if len(res['documents'][0]) == 1:
         return res['documents'][0][0]
     else:
         return participant + ' does not know anything about ' + topic
-def get_string_from_conviction(participant, topic):
-    res = query_knowledge_conviction_collection(participant, topic, 'Knowledge')
-    if len(res['documents'][0]) == 1:
-        return res['documents'][0][0]
-    else:
-        return ''
 
 
 ###das wäre das ganze akumulierte wissen von participant zu topic
 # knowledge_for_prompt = get_string_from_knowledge('Elon Musk', 'techno')
 
 
-def make_and_or_use_conviction_collection(participant, topic, arguments='' ):
+def write_conviction_collection(participant, topic, arguments=''):
     collection_name = participant.replace(' ', '') + 'Conviction'
-
+    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # hole die bisherige Meinung des participant
-    conv = query_knowledge_conviction_collection(participant, topic, 'Conviction')
-    found_collection = False
-    for collection in chroma.list_collections():
-        if collection.name == collection_name:
-            found_collection=True
-            if conv and conv['documents'] and conv['documents'][0]:
-                ###todo
-            else:
-                ###todo
-
-    if not found_collection:
-        # falls noch nicht vorhanden: erzeuge collection und füge wissen ein
-        globals()[collection_name] = chroma.create_collection(collection_name)
-        ###todo
 
 
-
-
-    prior_conviction = get_string_from_conviction(participant, topic)
-    if arguments != '':
-        res = openai.ChatCompletion(
-            model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "user", "content": f"update_conviction: update this conviction: {prior_conviction} of {participant} about {topic}. Consider {arguments}"}
-            ],
-            functions=functions,
-            function_call={'name': 'update_conviction'}
-        )
-    else:
-        res = openai.ChatCompletion(
-            model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "user",
-                 "content": f"generate_conviction for {participant} about subject {topic}."}
-            ],
-            functions=functions
-        )
 
     found_collection = False
     for collection in chroma.list_collections():
         if collection.name == collection_name:
             found_collection = True
-            # wemm es schon ein dokument gibt:
-            if res and res['documents'] and res['documents'][0]:
-                # hole id, diese wird für das update gebraucht
-                old_id = globals()[collection_name].get(where={'theme': topic})['ids']
-                # neues wissen mit altem kombinieren:
-                research_result = res['documents'][0][0] + '\n' + research_result
-                # document mit neuem wissen ersetzen
-                globals()[collection_name].update(metadatas={'theme': topic}, documents=research_result, ids=old_id)
+            conv = get_latest_conviction(participant, topic)
+            #wenn es eine frühere überzeugung gibt:
+            if conv and conv['documents'] and conv['documents'][0]:
+
+                #in dem fall sollte es zwar auch ein argument geben (nach der ersten runde werden überzeugungen generiert)
+                if arguments != '':
+                    res = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo-1106",
+                        messages=[
+                            {"role": "user",
+                             "content": f"update_conviction: update this conviction: {conv} of {participant} about {topic}. Consider {arguments}"}
+                        ],
+                        functions=functions,
+                        function_call={'name': 'update_conviction'}
+                    )
+                    result = res["choices"][0]["message"]["function_call"]["arguments"]
+                    res_json = json.loads(result)
+                    final = res_json['conviction']
+                    globals()[collection_name].add(documents=final, metadatas=topic, ids=topic + timestamp_string)
+                #falls irgendwie keine überzeugung gegeben
+                else:
+                    res = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo-1106",
+                        messages=[
+                            {"role": "user",
+                             "content": f"generate_conviction for {participant} about subject {topic}."}
+                        ],
+                        functions=functions
+                    )
+                    result = res["choices"][0]["message"]["function_call"]["arguments"]
+                    res_json = json.loads(result)
+                    final = res_json['conviction']
+                    globals()[collection_name].add(documents=final, metadatas=topic, ids=topic + timestamp_string)
             else:
-                # für id dynamisch bestimmen
-                # ich weiß gerade nicht, was die +1 da hinten soll...
-                start_number = 1 if globals()[collection_name].count() == 0 else globals()[collection_name].count()
-                # wissen einfügen
-                globals()[collection_name].add(documents=research_result, metadatas={'theme': topic},
-                                               ids=str(start_number))
-            break
+                res = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo-1106",
+                    messages=[
+                        {"role": "user",
+                         "content": f"generate_conviction for {participant} about subject {topic}."}
+                    ],
+                    functions=functions
+                )
+                result = res["choices"][0]["message"]["function_call"]["arguments"]
+                res_json = json.loads(result)
+                final = res_json['conviction']
+                globals()[collection_name].add(documents=final,
+                                               metadatas=topic, ids=topic + timestamp_string)
 
     if not found_collection:
-        # falls noch nicht vorhanden: erzeuge collection und füge wissen ein
+        res = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "user",
+                 "content": "generate_conviction for Karl Marx subject Simulation Hypothesis."}
+            ],
+            functions=functions
+        )
+        result = res["choices"][0]["message"]["function_call"]["arguments"]
+        res_json= json.loads(result)
+        final=res_json['conviction']
         globals()[collection_name] = chroma.create_collection(collection_name)
-        globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(0))
+        globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic+timestamp_string)
 
-    collection_name = participant.replace(' ', '') + 'Conviction'
-    for collection in chroma.list_collections():
-        if collection.name == collection_name:
-            globals()[collection_name].add()
-            globals()[collection_name].add()
-        else:
-            globals()[collection_name] = chroma.create_collection(collection_name)
-            globals()[collection_name].add()
+
 
 
 def has_participant_knowledge(participant, topic):
-    res = query_knowledge_conviction_collection(participant, topic,'Knowledge')
+    res = query_knowledge_collection(participant, topic)
     if res and res['documents'] and res['documents'][0]:
         return True
     else:
         return False
-
-
-
 
 
 def get_best_document(topic, n_results=1, precise=False, precision=0.36):
@@ -565,7 +574,6 @@ def get_best_document(topic, n_results=1, precise=False, precision=0.36):
     else:
         return r['documents']
 
-print(r)
 
 # GPT und Txt Zeug, Konstanten festlegen
 initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
@@ -579,7 +587,7 @@ os.makedirs(wiki_directory, exist_ok=True)
 knowledge_directory = 'NetworkApproach/txtFiles/Knowledge'
 os.makedirs(knowledge_directory, exist_ok=True)
 # target = './FocusedConversationApproach/txtFiles/generatedProfiles/used/'
-timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 profile_scheme = read_from_file('./FocusedConversationApproach/txtFiles/scheme.txt')
 
 prompt_p1 = (
@@ -607,43 +615,23 @@ fill_profile_schemes_for_participants(initial_participants)
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
-print(Research.segregation_str, "Response - Content", get_response_content(first_conversation))
+print("fertig")
 
 # Suche bei Wikipedia anstoßen
 extracted_topic = extract_topics_of_conversation(first_conversation)
 
-top = ["Canon"]
-fill_profile_schemes_for_participants(initial_participants)
+top = ["Simulation Hypothesis"]
+
 
 # Knowledge hinzufügen
 for participant in initial_participants:
     add_knowledge_to_profile(participant, top)
+
 print('fertig')
 r = public_discussions.query(query_texts="simulation")
-re=get_best_document('simulation', 4, True, 0.1)
-s=get_best_document('simulation', 4, True, 0.1)
-res=query_knowledge_conviction_collection('Elon Musk', 'AI', 'Knowledge')
-print(get_string_from_knowledge('Karl Marx', 'AI'))
-t=get_best_document('simulation', 4, True, 0.39)
 
+r=get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
 
-res = openai.ChatCompletion(
-            model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "user",
-                 "content": f"generate_conviction for the participant Karl Marx about subject Socialism."}
-            ],
-            functions=functions
-        )
-response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "user", "content": f"generate_conviction for Karl Marx about the topic Socialism"}
-            ],
-            functions=functions
-        )
-print(response["choices"][0]["message"]["function_call"]["arguments"])
-print('asdfasdf')
 
 
 
@@ -664,11 +652,11 @@ TODO:
 
 ##example use für chroma queries:
 ##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
-make_and_or_use_knowledge_collection("Elon Musk", "techno", "techno ist geil")
+write_knowledge_collection("Elon Musk", "techno", "techno ist geil")
 ###das erzeugt die collection: ElonMuskKnowledge - Collections dürfen keine Sonderzeichen enthalten. Die Leerzeichen im Namen werden in der Methode entfernt
 ###das namensscheme wird immer so sein: VornameNachnameKnowledge
 ###diese collection kann wie folgt angefragt werden:
-result = query_knowledge_conviction_collection('Elon Musk', 'techno', 'Knowledge')
+result = query_knowledge_collection('Elon Musk', 'techno', 'Knowledge')
 ###merke: der name kann mit leerzeichen übergeben werden. auch ist kenntnis vom namen der collection (bisher) unnötig
 ###wegen der verarbeitung in einer anderen methode muss das ergebnis noch extrahiert werden
 print(result['documents'][0])
@@ -676,8 +664,8 @@ print(len(result['documents'][0]))
 ###gibt: ['techno ist geil']
 ###ACHTUNG: die Strings sind case - sensitive: schreibe ich 'Techno'statt 'techno' kommt nichts zurück
 ###noch im prototyp status: sammelt der participant noch mehr wissen zu dem thema:
-make_and_or_use_knowledge_collection("Elon Musk", "techno", "auf technoparties werden viele drogen genommen")
-result = query_knowledge_conviction_collection('Elon Musk', 'techno', 'Knowledge')
+write_knowledge_collection("Elon Musk", "techno", "auf technoparties werden viele drogen genommen")
+result = query_knowledge_collection('Elon Musk', 'techno', 'Knowledge')
 print(result['documents'][0])
 
 ###wertet aus zu: ['techno ist geil\nauf technoparties werden viele drogen genommen']
