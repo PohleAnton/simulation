@@ -3,26 +3,11 @@ import json
 import os
 import chromadb
 import yaml
-from chromadb.api.types import (
-    Document,
-    Documents,
-    Embedding,
-    Image,
-    Images,
-    EmbeddingFunction,
-    Embeddings,
-    is_image,
-    is_document,
-)
 import openai
 from chromadb.utils import embedding_functions
 from NetworkApproach import Research2 as Research
 
-# from FocusedConversationApproach.GeneratePersons import functions as gp_functions
-
-
-__author__ = "Anton Pohle"
-__credits__ = ["Sebastian Koch", "Anton Pohle"]
+__author__ = "Anton Pohle, Sebastian Koch"
 
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
@@ -36,6 +21,8 @@ chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
 first_finished = False
+# um google request zu sparen:
+wiki_results = {}
 
 functions = [
     {
@@ -134,7 +121,7 @@ functions = [
                 "argument": {
                     "type": "string",
                     "description": "An argument formulated based on knowledge, "
-                                   "conviction and prior discussion. Meant to convince some else"
+                                   "conviction and prior discussion. Meant to convince some else of the importance of truth of subject."
                 }
             },
             "required": ["knowledge", "conviction", "prior discussion", "topic"]
@@ -233,6 +220,7 @@ def get_filled_knowledge_scheme_for_participant(participant, given_topics):
 
 
 def add_knowledge_to_profile(participant, given_topics):
+    global wiki_results
     knows = []
     unknown = given_topics
     for topic in given_topics:
@@ -265,74 +253,33 @@ def add_knowledge_to_profile(participant, given_topics):
             # lässt gpt wissen generieren, welches die person wahrscheinlich hat
             write_knowledge_collection(participant, topic, final)
 
-    # generiert eine überzeugung. zum updaten brauch es eigentlich argumente!
-    ##ToDO TESTING ONLY - THIS CAN NOT STAY HERE
+    # ToDO TESTING ONLY - THIS CAN stay here though
     for topic in given_topics:
         write_conviction_collection(participant, topic)
 
+    for item in unknown:
+        if item in wiki_results:
+            unknown.remove(item)
+
     topic_results = organize_wiki_search(unknown)
-    print(participant)
-    print(topic_results)
+
     for topic, research_result in topic_results.items():
+        wiki_results[topic] = research_result
         write_knowledge_collection(participant, topic, research_result)
-
-
-# Sucht sich die Themen raus, über die der participant zusätzliches Wissen hat.
-# Zustäzliches Wissen ist alles, was der participant auf jeden Fall kennt
-# (alle Gesprächsthemen, von denen die GPT glaubt, der participant mit dem Profil könnte sie kennen,
-# und dann auch die worüber er nicht so viel wissen sollte, weil er diese ja dann bei Wikipedia sucht)
-def get_additional_knowledge_of_participant(participant):
-    knowledge_file_path = knowledge_directory + "/" + get_file_name(participant)
-    participant_profile = read_from_file(knowledge_file_path)
-    knowledge = participant_profile.split("Additional Knowledge:")[1]
-    topic_list = knowledge.split(",")
-    topic_list = [topic.strip() for topic in topic_list]
-    # print(Research.segregation_str, f"Necessary Wiki Files:\n{topic_list}")
-    return topic_list
-
-
-# ruft den Inhalt aller benötigter Wiki-Files ab
-def get_content_of_wiki_files(given_topics):
-    end_content = []
-
-    # Wiki-Artikel abrufen
-    for topic in given_topics:
-        wiki_file_path = wiki_directory + "/" + get_file_name(topic)
-        if does_file_exists(wiki_file_path):
-            end_content.append(read_from_file(wiki_file_path))
-    # print(Research.segregation_str, f"Content of necessary Wiki Files:\n")
-    for content in end_content:
-        print('')
-
-    return "\n\n".join(end_content)
-
-
-def does_file_exists(file_path):
-    exists = os.path.isfile(file_path)
-    return exists
 
 
 # Fügt die Profile der Gesprächsteilnehmer zusammen
 def join_profiles(participants):
     profiles_of_participants = ""
     for participant in participants:
-        file_path = profile_directory + "/" + get_file_name(participant)
-        profile_to_add = "("
-        if does_file_exists(file_path):
-            profile_to_add = read_from_file(file_path)
-        profiles_of_participants += profile_to_add
-        profiles_of_participants += ")\n\n"
+        profiles_of_participants += participant_collection.get(where={'name': participant})['documents'][0]
+        profiles_of_participants += "\n\n"
     return profiles_of_participants
 
 
 # extrahiert den Content einer GPT-Response
 def get_response_content(given_response):
     return given_response.choices[0].message.content
-
-
-# Extrahiert die Arguments (nach Function Call) aus GPT-Response
-def get_response_arguments(given_response):
-    return given_response.choices[0].message.function_call.arguments
 
 
 # Antons Code zum Strukturieren der Conversation
@@ -526,13 +473,8 @@ def write_conviction_collection(participant, topic, arguments=''):
     found_collection = False
     for collection in chroma.list_collections():
         if collection.name == collection_name:
-            print("PUNKT" + collection.name)
-            print("Unterstrich" + collection_name)
-            print("alpha")
             found_collection = True
-
             conv = get_latest_conviction(participant, topic)
-            print("beta")
             if conv != '':
                 if arguments != '':
                     res = openai.ChatCompletion.create(
@@ -603,7 +545,7 @@ def has_participant_knowledge(participant, topic):
         return False
 
 
-def get_best_document(topic, n_results=1, precise=False, precision=0.36):
+def get_best_document(topic, n_results=1, precise=False, precision=0.35):
     r = public_discussions.query(query_texts=topic, n_results=n_results)
     if precise:
         filtered_documents = []
@@ -677,6 +619,7 @@ fill_profile_schemes_for_participants(initial_participants)
 
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
+print(prompt_for_first_conversation)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
 print('fertig')
 
@@ -689,15 +632,16 @@ for participant in initial_participants:
 print('fertig')
 
 # gets us the closest to the simulation hypothesis
-new_theme = public_discussions.query(query_texts="simulation")
+new_theme = public_discussions.query(query_texts="Ideals")
 further = new_theme['metadatas'][0][0].get('theme')
 content = further = new_theme['documents'][0][0]
-
+print(content)
 ###oder, etwas genauer:
 new_theme = get_best_document('Simulation Hypothesis', 5, True, 0.33)
 themes = ''
 for document in new_theme:
     themes += document
+
 
 ##runde 2
 
@@ -716,7 +660,7 @@ def form_argument(participant, topic, prior_content):
     return response
 
 
-response = form_argument('Elon Musk', 'The Simulation Hypothesis', content)
+response = form_argument('Elon Musk', 'State of Society', content)
 print('fertig')
 res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
 print(res)
@@ -750,9 +694,3 @@ print(result['documents'][0])
 ### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
 ### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
 ###überzeugung
-write_conviction_collection('Elon Musk', 'Simulation Hypothesis', 'THe simulation was proven wrong')
-t = get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
-
-id = get_latest_conviction_id('KarlMarx', 'topic')
-
-res = KarlMarxConviction.query(query_texts="Simulation Hypothesis")

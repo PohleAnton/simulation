@@ -17,7 +17,7 @@ segregation_str = ("\n\n<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< --
 
 
 # https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=de
-def build_payload(query, start=1, num=10):
+def build_payload(query, start=1, num=3):
     # kann mit date_restict erweitert werden, schränkt Zeit ein
     payload = {
         'key': google_api_key,
