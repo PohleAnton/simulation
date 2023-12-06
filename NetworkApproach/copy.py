@@ -1,9 +1,7 @@
 from datetime import datetime
 import json
 import os
-import random
 import chromadb
-import openai
 import yaml
 from chromadb.api.types import (
     Document,
@@ -16,33 +14,28 @@ from chromadb.api.types import (
     is_image,
     is_document,
 )
+import openai
 from chromadb.utils import embedding_functions
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-from langchain.document_loaders import DirectoryLoader, TextLoader
-from langchain.embeddings import SentenceTransformerEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores.chroma import Chroma
+from NetworkApproach import Research2 as Research
 
 # from FocusedConversationApproach.GeneratePersons import functions as gp_functions
 
-# Teile des GPT-Codes und der ganze Chroma und txt Code kommt von Anton (hier reinkopiert)
-# Logik, Ablauf, Kürzungen, Methoden etc. von mir
+
 __author__ = "Anton Pohle"
 __credits__ = ["Sebastian Koch", "Anton Pohle"]
-
-from NetworkApproach import Research2 as Research
 
 # API Key konfigurieren
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=openai.api_key,
-                model_name="text-embedding-ada-002"
-            )
+    api_key=openai.api_key,
+    model_name="text-embedding-ada-002"
+)
 
 chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
+first_finished = False
 
 functions = [
     {
@@ -73,16 +66,16 @@ functions = [
                                     "properties": {
                                         "name": {
                                             "type": "string",
-                                            "description": "Name of the participant. Write like this: {name} thinks:"
+                                            "description": "Name of the participant. "
                                         },
                                         "summary": {
                                             "type": "string",
-                                            "description": "Summary of what they said about that topic. Start like this: \"I think...\""
+                                            "description": "Long and detailed description of what they said about the subject. Start like this: \"I think...\""
                                         },
                                         "liking": {
                                             "type": "string",
                                             "description": "How much the participant liked that part of the conversation on this scale: a lot, a little, not at all. Always write like this:  {name} likes it  {rating}"
-                                        }
+                                        },
                                     }
                                 }
                             }
@@ -106,17 +99,17 @@ functions = [
         }
     },
     {
-      "name": "generate_conviction",
-      "description" : "A function that generates the likely inner thoughts of a participant about a subject",
-      "parameters": {
-          "type": "object",
-          "properties": {
-              "conviction": {
-                  "type": "string",
-                  "description": "Inner most thoughts of a participant about a subject"
-              }
-          }
-      }
+        "name": "generate_conviction",
+        "description": "A function that generates the likely inner thoughts of a participant about a subject",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "conviction": {
+                    "type": "string",
+                    "description": "Inner most thoughts of a participant about a subject. Nuanced. Write in first person."
+                }
+            }
+        }
     },
     {
         "name": "update_conviction",
@@ -126,10 +119,25 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Inner most thoughts of a participant about a subject. Can change based on acquired knowledge or arguments by other people."
+                    "description": "New, detailed description of inner most thoughts about a subject. Based on prior conviction and arguments. Write in first person."
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
+        }
+    },
+    {
+        "name": "form_argument",
+        "description": "A function that generates a convincing argument about a topic based on conviction and knowledge",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "argument": {
+                    "type": "string",
+                    "description": "An argument formulated based on knowledge, "
+                                   "conviction and prior discussion. Meant to convince some else"
+                }
+            },
+            "required": ["knowledge", "conviction", "prior discussion", "topic"]
         }
     }
 ]
@@ -233,21 +241,31 @@ def add_knowledge_to_profile(participant, given_topics):
             knows.append(topic)
 
     for topic in unknown:
-        response = openai.ChatCompletion.create(
+        # kleine workaround, damit gpt nicht irgendwas schreibt, sondern nur wissen generiert, wenn es sinnvoll ist
+        judge = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-1106",
             messages=[
-                {"role": "user", "content": f"generate_knowledge for {participant} about the topic {topic}"}
+                {"role": "system", "content": "you are a binary judge that answers questions only with yes or no"},
+                {"role": "user",
+                 "content": f"Is it likely that {participant} knows anything about {topic}?"}
             ],
-            functions=functions
         )
+        prerequisite = judge['choices'][0]['message']['content']
+        if 'Yes' in prerequisite or 'yes' in prerequisite:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo-1106",
+                messages=[
+                    {"role": "user", "content": f"generate_knowledge for {participant} about the topic {topic}"}
+                ],
+                functions=functions
+            )
 
-        res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
-        final = res['knowledge']
-        print(final)
-        #lässt gpt wissen generieren, welches die person wahrscheinlich hat
-        write_knowledge_collection(participant, topic, final)
+            res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
+            final = res['knowledge']
+            # lässt gpt wissen generieren, welches die person wahrscheinlich hat
+            write_knowledge_collection(participant, topic, final)
 
-    #generiert eine überzeugung. zum updaten brauch es eigentlich argumente!
+    # generiert eine überzeugung. zum updaten brauch es eigentlich argumente!
     ##ToDO TESTING ONLY - THIS CAN NOT STAY HERE
     for topic in given_topics:
         write_conviction_collection(participant, topic)
@@ -257,9 +275,6 @@ def add_knowledge_to_profile(participant, given_topics):
     print(topic_results)
     for topic, research_result in topic_results.items():
         write_knowledge_collection(participant, topic, research_result)
-
-
-
 
 
 # Sucht sich die Themen raus, über die der participant zusätzliches Wissen hat.
@@ -310,8 +325,6 @@ def join_profiles(participants):
     return profiles_of_participants
 
 
-
-
 # extrahiert den Content einer GPT-Response
 def get_response_content(given_response):
     return given_response.choices[0].message.content
@@ -322,9 +335,6 @@ def get_response_arguments(given_response):
     return given_response.choices[0].message.function_call.arguments
 
 
-
-
-
 # Antons Code zum Strukturieren der Conversation
 def get_structured_conversation_with_gpt(given_conversation):
     vector_test = get_gpt_response_with_function('structure_conversation'
@@ -333,52 +343,79 @@ def get_structured_conversation_with_gpt(given_conversation):
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
     print("immernoch vor bug")
-    structured_data = json.loads(content)
+    try:
+        structured_data = json.loads(content)
+    except json.decoder.JSONDecodeError:
+        structured_data = json.dumps(content)
     return structured_data
 
 
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
-    print('vor bug?')
-    data = get_structured_conversation_with_gpt(given_conversation)
-    print('after bug')
+    global first_finished
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
+    print('vor bug?')
+    data = get_structured_conversation_with_gpt(given_conversation)
+    print('after bug')
 
-    for theme in data["themes"]:
-        conversation_topics.append(theme['theme'])
-        # print(theme, ", ")
-        chroma_ids.append(start_number)
-        start_number += 1
-        if 'liking' in theme['content'][0]:
-            chroma_documents.append(
-                '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]]))
-        else:
-            chroma_documents.append(
-                '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]]))
+    if not first_finished:
+        for theme in data["themes"]:
+            conversation_topics.append(theme['theme'])
+            chroma_ids.append(start_number)
+            start_number += 1
+            if 'liking' in theme['content'][0]:
+                chroma_documents.append(
+                    '\n\n'.join(
+                        [f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]]))
+            else:
+                chroma_documents.append(
+                    '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]]))
 
-        chroma_metadatas.append({'theme': theme['theme']})
+            chroma_metadatas.append({'theme': theme['theme']})
 
-    chroma_ids = [str(id) for id in chroma_ids]
-    public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
-    return conversation_topics
+        chroma_ids = [str(id) for id in chroma_ids]
+        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
+        first_finished = True
+        return conversation_topics
 
+    if first_finished:
+        global extracted_topic
+        proto_topics = []
+        for theme in data["themes"]:
+            proto_topics.append(theme["theme"])
+        new_topics = compare_themes(extracted_topic, proto_topics)
+        for index, theme in enumerate(data["themes"]):
+            if index < len(new_topics):
+                theme["theme"] = new_topics[index]
+        for theme in data["themes"]:
+            conversation_topics.append(theme['theme'])
+            chroma_ids.append(start_number)
+            start_number += 1
+            if 'liking' in theme['content'][0]:
+                chroma_documents.append(
+                    '\n\n'.join(
+                        [f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]]))
+            else:
+                chroma_documents.append(
+                    '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]]))
+
+            chroma_metadatas.append({'theme': theme['theme']})
+
+        chroma_ids = [str(id) for id in chroma_ids]
+        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
+        return conversation_topics
 
 
 def organize_wiki_search(given_topics):
     topic_results = {}
     for topic in given_topics:
-        researched_with_wiki, research_result = Research.try_wiki_search(topic)
-        if researched_with_wiki:
-            topic_results[topic] = research_result
-        else:
-            print(Research.segregation_str,
-                  f"There will be no file for {topic} due to lack of a Wikipedia-article.")
+        research_result = Research.try_wiki_search(topic)
+        topic_results[topic] = research_result
     return topic_results
-
 
 
 def query_public_discussions(query, results=1):
@@ -404,7 +441,6 @@ def write_knowledge_collection(participant, topic, research_result):
     collection_name = participant.replace(' ', '') + 'Knowledge'
 
     res = query_knowledge_collection(participant, topic)
-
 
     found_collection = False
     for collection in chroma.list_collections():
@@ -433,8 +469,7 @@ def write_knowledge_collection(participant, topic, research_result):
         globals()[collection_name].add(documents=research_result, metadatas={'theme': topic}, ids=str(0))
 
 
-
-def query_knowledge_collection(participant, topic,  n_results=1):
+def query_knowledge_collection(participant, topic, n_results=1):
     collection_name = participant.replace(' ', '') + 'Knowledge'
     found_collection = False
     result = []
@@ -444,23 +479,28 @@ def query_knowledge_collection(participant, topic,  n_results=1):
             res = globals()[collection_name].query(query_texts=topic, where={'theme': topic}, n_results=n_results)
             return res
 
+
 def get_latest_conviction(participant, topic):
     collection_name = participant.replace(' ', '') + 'Conviction'
-    id=get_latest_conviction_id(participant, topic)
-    last_conviction = globals()[collection_name].get(ids=[id])
-    if last_conviction['documents'][0]:
+    print('you made it heere')
+    try:
+        print('also here')
+        id = get_latest_conviction_id(participant, topic)
+        print('but not here')
+        last_conviction = globals()[collection_name].get(ids=[id])
         return last_conviction['documents'][0]
-    else:
+    except IndexError:
         return ''
-
 
 
 def extract_timestamp(s):
     timestamp_str = s[-19:]
     return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+
 def get_latest_conviction_id(participant, topic):
     collection_name = participant.replace(' ', '') + 'Conviction'
-    collection=globals()[collection_name].get(where={'theme':topic})
+    collection = globals()[collection_name].get(where={'theme': topic})
     if collection['ids'][0]:
         ids = collection['ids']
         latest = max(ids, key=extract_timestamp)
@@ -486,8 +526,13 @@ def write_conviction_collection(participant, topic, arguments=''):
     found_collection = False
     for collection in chroma.list_collections():
         if collection.name == collection_name:
+            print("PUNKT" + collection.name)
+            print("Unterstrich" + collection_name)
+            print("alpha")
             found_collection = True
+
             conv = get_latest_conviction(participant, topic)
+            print("beta")
             if conv != '':
                 if arguments != '':
                     res = openai.ChatCompletion.create(
@@ -502,8 +547,9 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
-                #falls irgendwie keine überzeugung gegeben
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
+                                                   ids=topic + timestamp_string)
+                # falls irgendwie keine überzeugung gegeben
                 else:
                     res = openai.ChatCompletion.create(
                         model="gpt-3.5-turbo-1106",
@@ -516,7 +562,8 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
+                                                   ids=topic + timestamp_string)
             else:
                 res = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo-1106",
@@ -545,9 +592,7 @@ def write_conviction_collection(participant, topic, arguments=''):
         res_json = json.loads(result)
         final = res_json['conviction']
         globals()[collection_name] = chroma.create_collection(collection_name)
-        globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic+timestamp_string)
-
-
+        globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
 def has_participant_knowledge(participant, topic):
@@ -568,6 +613,29 @@ def get_best_document(topic, n_results=1, precise=False, precision=0.36):
         return filtered_documents
     else:
         return r['documents']
+
+
+def compare_themes(prior_topic, new_topics):
+    updated_topics = []
+    for new in new_topics:
+        replaced = False
+        for prior in prior_topic:
+            judge = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo-1106",
+                messages=[
+                    {"role": "system",
+                     "content": "You compare 2 Strings and asses if they refer to the same concept. You only answer yes or no"},
+                    {"role": "user",
+                     "content": f"Does {prior} mean the same thing as {new}"}
+                ],
+            )
+            if 'Yes' in judge['choices'][0]['message']['content'] or 'yes' in judge['choices'][0]['message']['content']:
+                updated_topics.append(prior)
+                replaced = True
+
+        if not replaced:
+            updated_topics.append(new)
+    return updated_topics
 
 
 # GPT und Txt Zeug, Konstanten festlegen
@@ -610,40 +678,55 @@ fill_profile_schemes_for_participants(initial_participants)
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
-print("fertig")
+print('fertig')
 
 # Suche bei Wikipedia anstoßen
+
 extracted_topic = extract_topics_of_conversation(first_conversation)
 
-top = ["Simulation Hypothesis"]
-
-
-# Knowledge hinzufügen
 for participant in initial_participants:
-    add_knowledge_to_profile(participant, top)
-
+    add_knowledge_to_profile(participant, extracted_topic)
 print('fertig')
-r = public_discussions.query(query_texts="simulation")
 
-r=get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
+# gets us the closest to the simulation hypothesis
+new_theme = public_discussions.query(query_texts="simulation")
+further = new_theme['metadatas'][0][0].get('theme')
+content = further = new_theme['documents'][0][0]
+
+###oder, etwas genauer:
+new_theme = get_best_document('Simulation Hypothesis', 5, True, 0.33)
+themes = ''
+for document in new_theme:
+    themes += document
+
+##runde 2
 
 
+def form_argument(participant, topic, prior_content):
+    conviction = get_latest_conviction(participant, topic)
+    knowledge = get_string_from_knowledge(participant, topic)
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=[
+            {"role": "user",
+             "content": f"form_argument for {participant} about {topic}. consider his knowledge: {knowledge}, his conviction: {conviction} and what was said before: {prior_content}"}
+        ],
+        functions=functions
+    )
+    return response
 
 
-
+response = form_argument('Elon Musk', 'The Simulation Hypothesis', content)
+print('fertig')
+res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
+print(res)
 """
 TODO:
-1. Ergebnisse zu den Themen (research_result_list) als eine Collection speichern
-2. Metadaten der gesuchten Themen aus Liste (Thema + Namen all derer, die es recherchiert haben)
-3. Inhalt der einzelnen Dokumente: Content aus Liste
 4. Sobald 2 Personen eine Konversation beendet haben, werden die Themen gesucht und entsprechend in die DB geschrieben
 5. Dauerschleife bzw. öfters wiederholen
 6. zur Generierung der neuen Konversationen sollte das Wissen (inklusive Recherche) mitgegeben werden -> sehr langer Prompt
-7. Conversation Chunks werden im Format "timpestamp_<participants>" gespeichert, dann werden alle Gespräche rausgesucht, in denen das gesuchte Thema vorgekommen ist und geprüft, was die letzte Meinung (likin) zu diesem Thema war"
 8. GPT soll Gesprächspartner anhand der Profile finden udn wieder von vorn (Sprechen, Suchen, Meinung)
 """
-
-
 
 ##example use für chroma queries:
 ##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
@@ -669,3 +752,7 @@ print(result['documents'][0])
 ###überzeugung
 write_conviction_collection('Elon Musk', 'Simulation Hypothesis', 'THe simulation was proven wrong')
 t = get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
+
+id = get_latest_conviction_id('KarlMarx', 'topic')
+
+res = KarlMarxConviction.query(query_texts="Simulation Hypothesis")

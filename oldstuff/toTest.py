@@ -73,7 +73,7 @@ functions = [
 ]
 
 intro = openai.ChatCompletion.create(
-    model="gpt-4",
+    model="gpt-3.5-turbo-1106",
     messages=[
         {"role": "user", "content": prompt}
     ],
