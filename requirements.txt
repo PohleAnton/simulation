@@ -6,3 +6,6 @@ pinecone-client
 chromadb~=0.4.17
 
 langchain~=0.0.335
+
+nltk~=3.8.1
+requests~=2.31.0

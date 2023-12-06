@@ -41,10 +41,7 @@ def make_request(payload):
     return response.json()
 
 
-def research_web(query):  # kann für die google APi dann erweiter werden, falls nötig
-    # Hier die Logik für die Websuche implementieren und das Ergebnis zurückgeben
-    result_list = []
-
+def research_web(topic):
     # Option 1: googlesearch
     """
     try:
@@ -116,14 +113,13 @@ def research_web(query):  # kann für die google APi dann erweiter werden, falls
     """
 
     # Option 6: Google custom search api
-    # Wie auch bei den oberen erhält man keine Daten, mit denen man arbeiten kann.
-    # Nur ein kryptisches JSON
-    query = "Wetter in Berlin"  # Zu test zwecken
+    query = topic + " site:en.wikipedia.org"
     payload = build_payload(query)  # request parameter vorbereiten
     response = make_request(payload)  # Auf 100 Anfragen pro Tag begrenzt
-    result_list.append(response['items'])
-    for result in result_list:
-        print(result)
+    result_list = response['items']
+    # print(segregation_str, f"Web Search - {query} :\n")
+    # for result in result_list:
+    #     print_json_in_pretty(result)
 
     """
     # Hier wird aus der Query der filename gebaut und etwaige Sonderzeichen entfernt
@@ -141,7 +137,11 @@ def research_web(query):  # kann für die google APi dann erweiter werden, falls
             file.write(result)
     """
 
-    # return result_list[:3]
+    return result_list
+
+
+def print_json_in_pretty(given_json):
+    print(json.dumps(given_json, indent=4))
 
 
 def get_wikipedia_api_instance(topic):
@@ -196,7 +196,7 @@ def get_wikipedia_summary(topic):
     # Option 2: wikipediaapi package
     page_py = get_wikipedia_api_instance(topic)
     summary = page_py.summary
-    print(segregation_str, "Wiki-API Response:\n\n", summary)
+    # print(segregation_str, f"Wiki-API Response: {topic}\n\n{summary}")
     # Für Testzwecke
     # check_minimal_parameters(page_py)
 
@@ -228,12 +228,82 @@ def get_wikipedia_title(topic):
 
 
 def try_wiki_search(given_topic):
+    """
     research_result = None
     site_exists = does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic)
     if site_exists:
         research_result = get_gpt_response_with_research(given_topic)
 
-    return site_exists, research_result
+    return research_result
+    """
+    google_result_list = research_web(given_topic)
+    titles_list = extract_titles_of_google_research(google_result_list)
+    summary_list = []
+    for title in titles_list:
+        summary_list.append(get_wikipedia_summary(title))  # nur für Testzwecke
+    str_for_gpt = "\n".join(summary_list)
+    gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
+                                    f"concentrate your focus on details and explanations "
+                                    f"utilizing and combine the following information: {str_for_gpt}")
+    content_str = get_response_content(gpt_response)
+    cleaned_string = content_str.replace("\n\n", "\n")
+    # print(segregation_str, f"Content of GPT Response:\n{cleaned_string}")
+
+    return cleaned_string
+
+
+def organize_research(given_topic):
+    google_result_list = research_web(given_topic)
+    titles_list = extract_titles_of_google_research(google_result_list)
+    summary_list = []
+    title_summary_list = []
+
+    for title in titles_list:
+        summary = get_wikipedia_summary(title)
+        summary_list.append(summary)
+        title_summary_list.append({"title": title, "summary": summary})
+
+    output_json = json.dumps(title_summary_list, indent=2)
+    print(output_json)
+
+    str_for_gpt = "\n".join(summary_list)
+    gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
+                                    f"concentrate your focus on details and explanations "
+                                    f"utilizing and combine the following information: {str_for_gpt}")
+    content_str = get_response_content(gpt_response)
+    cleaned_string = content_str.replace("\n\n", "\n")
+    # print(segregation_str, f"Content of GPT Response:\n{cleaned_string}")
+    return cleaned_string, title_summary_list
+
+
+def extract_titles_of_google_research(google_result_list):
+    # Extrahiere den "title" jedes JSON-Objekts, der "- Wikipedia" enthält
+    extracted_titles = [item["title"].replace(" - Wikipedia", "")
+                        if "- Wikipedia" in item.get("title", "")
+                        else item.get("title", "") for item in google_result_list]
+
+    # Gib die extrahierten "title" aus
+    for title in extracted_titles:
+        print(title)
+
+    return extracted_titles
+
+
+def get_gpt_response(content):  # ohne functions!
+    # print(segregation_str, f"GPT - message content:\n{content}")
+    messages = [
+        {"role": "user", "content": content}
+    ]
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=messages
+    )
+    return response
+
+
+def get_response_content(given_response):
+    return given_response.choices[0].message.content
 
 
 # Führt API Anfragen aus und ruft, falls nötig die Research-Funktionen auf
