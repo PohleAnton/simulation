@@ -286,7 +286,6 @@ def try_wiki_search(given_topic, num=10):  # hier sollte es bei 10 Webseiten ble
 
 def organize_research(given_topic, num=10):  # hier sollte es bei 10 Webseiten bleiben,
     # um eine zufällige Auswahl und dadurch unterschiedliche Ergebnisse zu gewährleisten
-    # TODO ggf. auch Exception Handling einbauen, falls Methode noch wichtig wird
     google_result_list = None
     try:
         google_result_list = research_web(given_topic, num)
