@@ -1,3 +1,7 @@
+"""
+sollte den Aufbau in GeneratePersons.py allgemein nutzbar machen - wurde zugunsten eines neuen Versuchaufbaus verlassen
+"""
+
 import shutil
 import datetime
 import chromadb

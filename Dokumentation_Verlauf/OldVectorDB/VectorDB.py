@@ -1,3 +1,15 @@
+"""
+Integeration und vor allem Aufbereitung der Vektordatenbanken. Der hier enthaltene Function Call wurde lange genutzt,
+um Konversation zu splitten, zusammenzufassen und pro TEilnehmer zu bewerten. Die Idee war, dass die Gesprächsteilnehmer
+im folgenden eher über Themen reden, welche ihnen gefallen haben. Die Idee ist zwar reizvoll, wird aber a) aus Komplexitäts-
+gründen (vorerst) und vor allem b) den daraus entstehenden Token nicht weiter verfolgt. Sicher ist es korrekt, dass man sich
+eher über Dinge unterhält, an denen man Freude hat - aber wenn unser Experiment ohnehin so lange läuft, bis ein Thema
+bis zu einem bestimmten Punkt diskutiert wurde, kann man sich zunächst darauf fokussieren.
+Es gibt verschiedenste Versionen dieses function calls die jeweils mit unterschiedlichen Konfigurationen / Query-Setups
+genutzt wurden - das soll hier nicht erschöpfend erläutert werden. Zumal viele Versionen davon nur in alten Commits zu finden sind.
+"""
+
+
 import json
 
 import chromadb

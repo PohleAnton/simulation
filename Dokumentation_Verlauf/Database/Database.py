@@ -1,6 +1,6 @@
 import mariadb
 import os
-from oldstuff.Database.Person import Person
+from Dokumentation_Verlauf.Database.Person import Person
 import yaml
 
 print(os.getenv('db_db'))

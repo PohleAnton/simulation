@@ -1,3 +1,9 @@
+"""
+weitere Versuche mit Vektordatenbanken, hier auch mit dem Langchain Framework. Der praktische Nutzen schien sich allerdings
+nicht zu erschließen, wenn man ausschließlich mit einer ChromaDB arbeitet
+
+"""
+
 import os
 import openai
 import langchain

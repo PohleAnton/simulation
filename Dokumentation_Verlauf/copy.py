@@ -1,3 +1,9 @@
+"""
+dieser Ansatz hat eine lange Entwicklung hinter sich. Viele einzeln untersuchte Elemente (wie und was für Profile erstellen,
+Wikipedia/Google API, VektorDB, function calls, system Message) finden hier zusammen - diese aus dieser Struktur ergibt sich
+vermeidlich die endgültig gewählte Richtung. Herausfordernd war hier auch die Integration von Code und Harmonisierung von Konzepten
+"""
+
 from datetime import datetime
 import json
 import os

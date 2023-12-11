@@ -1,5 +1,10 @@
-import copy
+"""
+Auch zu Beginn entstanden. Anfänglicher Versuch, die ursprüngliche Idee mit den vertrauten, deterministischen
+Mitteln umzusetzen- kaum Prompt-, eher Conversationenginiiering. Keine Vektordb
+"""
 
+
+import copy
 import yaml
 import openai
 import random
@@ -74,17 +79,17 @@ if agent2.name not in agent1.agents_met:
     agent1_books = copy.deepcopy(agent1.books)
     agent2_books = copy.deepcopy(agent2.books)
     if agent1.fav_book['title'] == agent2.fav_book['title']:
-        f = open('prompt_Templates/first_meeting/sameBook/1st_conversation.txt')
+        f = open('../oldstuff/prompt_Templates/first_meeting/sameBook/1st_conversation.txt')
         content = f.read()
         agent1_prompt = content.replace("<Name>", agent1.name).replace("<Random_Book>", agent1.fav_book['title'])
         f.seek(0)
         agent2_prompt = content.replace("<Name>", agent2.name).replace("<Random_Book>", agent2.fav_book['title'])
         f.close()
-        f = open('prompt_Templates/first_meeting/sameBook/1st_intro.txt')
+        f = open('../oldstuff/prompt_Templates/first_meeting/sameBook/1st_intro.txt')
         agent1_role = f.read()
         agent1_prompt = agent1_prompt.replace("<Dialog_Role>", agent1_role)
         f.close()
-        f = open('prompt_Templates/first_meeting/sameBook/1st_answer.txt')
+        f = open('../oldstuff/prompt_Templates/first_meeting/sameBook/1st_answer.txt')
         agent2_role = f.read()
         agent2_prompt = agent2_prompt.replace("<Dialog_Role>", agent2_role)
 
@@ -138,22 +143,22 @@ if agent2.name not in agent1.agents_met:
         # print(agent2.fav_book)
 
     if agent1.fav_book['title'] != agent2.fav_book['title']:
-        g = open('prompt_Templates/first_meeting/sameBook/1st_conversation.txt')
+        g = open('../oldstuff/prompt_Templates/first_meeting/sameBook/1st_conversation.txt')
         content = g.read()
         agent1_prompt = content.replace("<Name>", agent1.name).replace("<Random_Book>", agent1.fav_book['title'])
         g.seek(0)
         agent2_prompt = content.replace("<Name>", agent2.name).replace("<Random_Book>", agent2.fav_book['title'])
 
         g.close()
-        g = open('prompt_Templates/first_meeting/sameBook/1st_intro.txt')
+        g = open('../oldstuff/prompt_Templates/first_meeting/sameBook/1st_intro.txt')
         agent1_role = g.read()
         agent1_prompt = agent1_prompt.replace("<Dialog_Role>", agent1_role)
         g.close()
-        g = open('prompt_Templates/first_meeting/diffBook/1st_answer.txt')
+        g = open('../oldstuff/prompt_Templates/first_meeting/diffBook/1st_answer.txt')
         agent2_role = g.read()
         agent2_prompt = agent2_prompt.replace("<Dialog_Role>", agent2_role)
         g.close()
-        g = open('prompt_Templates/first_meeting/diffBook/give_bulletpoints.txt')
+        g = open('../oldstuff/prompt_Templates/first_meeting/diffBook/give_bulletpoints.txt')
         agent1_reply = g.read().replace("<Random_Book>", agent1.fav_book['title'])
 
         intro = openai.ChatCompletion.create(
@@ -224,7 +229,7 @@ if agent2.name not in agent1.agents_met:
 if agent1.name in agent2.agents_met:
 
     if agent1.fav_book == agent2.fav_book:
-        f = open('prompt_Templates/meeting/sameBook/greeting.txt')
+        f = open('../oldstuff/prompt_Templates/meeting/sameBook/greeting.txt')
         content = f.read()
         agent1_prompt = content.replace("<Their_Name>", agent2.name).replace("<Dialog_Role>", agent1_role)
         f.close()
@@ -251,7 +256,7 @@ if agent1.name in agent2.agents_met:
                 #agent1.fav_book['Used'].append(item)
                 agent2.fav_book['Used'].append(item)
                 agent2.fav_book['Used'] = list(set(agent2.fav_book['Used']))
-                f = open('prompt_Templates/meeting/sameBook/good_answer.txt')
+                f = open('../oldstuff/prompt_Templates/meeting/sameBook/good_answer.txt')
                 contents = f.read()
                 f.close()
 
@@ -267,7 +272,7 @@ if agent1.name in agent2.agents_met:
 
     if agent1.fav_book != agent2.fav_book:
         if [agent2.name] in agent2.books[agent2.fav_book['title']]:
-            f = open('prompt_Templates/meeting/diffBook/greeting.txt')
+            f = open('../oldstuff/prompt_Templates/meeting/diffBook/greeting.txt')
             content = f.read()
             agent1_prompt = (content.replace("<TheirName>", agent2.name).replace("<TheirBook>", agent2.fav_book)
                              .replace("<YourBook>", agent1.fav_book))

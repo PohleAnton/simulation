@@ -1,6 +1,14 @@
+"""
+Wie der Name schon sagt: Erste Schritte mit einer Vektordatenbank. Hier zunächst nur Chroma
+"""
+
+
 import chromadb
 from chromadb.config import Settings
 import os
+
+
+
 
 #so funktioniert das mit dem Persistieren nicht, wohl aber die ausführung
 client = chromadb.Client(Settings(

@@ -1,24 +1,87 @@
+"""
+Ähnlicher Ansatz wie in ./Database - die Idee war, einmal entdeckte, sinnvolle Personae wieder und wieder zu benutzen.
+-->Python muss mit der Datenbank sprechen.
+Außerdem sind hier erste Schritte mit Funktion Calls - Personen und Konversationen bewerten ist inzwischen allerdings obsolet.
+"""
+
+
 import json
 
-from oldstuff.Database.Person import Person
-from oldstuff.Database.Database import Database  # Import the Database class
+import mariadb
+import os
+
 import openai
 import yaml
-import os
+
+
+# ich definiere hier mal eine andere, sehr viel weniger komplexe person. diese hat alle eigenschaften, die aktuell in
+# der tabelle person gespeichert werden
+class Person:
+    def __init__(self, name, myers_briggs_type, personality_traits, interests, pk):
+        self.name = name
+        self.myers_briggs_type = myers_briggs_type
+        self.personality_traits = personality_traits
+        self.interests = interests
+        self.pk = pk
+
+    # das könnte super nützlich sein: das verwandelt ein objekt in einen lesbaren String - also auch für das LLM lesbar
+    # die personen bekommen zwar den pk - allerdings nur für die datenbankabfrage. der string lässt diesen bewusst aus,
+    # um das llm nicht mit einer willkürlichen zahl zu verwirren
+    def __str__(self):
+        return f"Person(name={self.name}, myers_briggs_type={self.myers_briggs_type}, personality_traits={self.personality_traits}, interests={self.interests})"
+
 
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
+
+# Set the environment variables from the loaded configuration
+for key, value in cfg.items():
+    os.environ[key] = str(value)
+
+# Access the variables
+db_host = os.getenv('DB_HOST')
+db_user = os.getenv('DB_USER')
+db_password = os.getenv('DB_PASSWORD')
+db_db = os.getenv('DB_DB')
 openai.api_key = os.getenv('openai')
+
 print(openai.api_key)
-# Now you can use the Database class
-database = Database()
-print("Person:", Person)
-person1 = database.get_person_by_pid(6)
-person2 = database.get_person_by_pid(7)
 
-persons_array = [person1, person2]
+conn = mariadb.connect(host=db_host, user=db_user, passwd=db_password, db=db_db)
+cur = conn.cursor()
+try:
+    cur.execute("SELECT * FROM person where pid=6")
+    row = cur.fetchone()
+    if row:
+        person1 = Person(name=row[1], myers_briggs_type=row[2], personality_traits=row[3], interests=row[4], pk=row[0])
 
-# weiß nicht so richtig, wohin ich das refactorieren soll...
+    cur.execute("SELECT * FROM person where pid=7")
+    row2 = cur.fetchone()
+
+    if row2:
+        person2 = Person(name=row2[1], myers_briggs_type=row2[2], personality_traits=row2[3], interests=row2[4],
+                         pk=row2[0])
+except mariadb.Error as e:
+    print(f"Error: {e}")
+
+finally:
+    cur.close()
+    conn.close()
+
+print(person1)
+print(person2)
+
+prompt = 'conversation between 2 people: ' + str(person1) + '\n' + str(person2)
+
+intro = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo-1106",
+    messages=[
+        {"role": "user", "content": prompt}
+    ]
+)
+
+conversation = intro.choices[0].message.content
+
 functions = [
     # dieser call kann benutzt werden, um eine konversation zu bewerten. die gewählten attribute und skalen sind
     # willkürlich
@@ -99,7 +162,7 @@ functions = [
                                         },
                                         "thought": {
                                             "type": "string",
-                                            "description": "A few words (maximal 30 words)What the thinker thinks about this participant. Should be personal, what they like or dislike about them"
+                                            "description": "A few words (maximal 30 words)What the thinker thinks about this participant. Maybe what they like or don't like about them"
                                         }
                                     }
                                 }
@@ -110,21 +173,9 @@ functions = [
             }
         }
     }
+
 ]
 
-prompt = 'conversation between 2 people: ' + str(person1) + '\n' + str(person2)
-
-# erzeugt erstmal die konversation
-intro = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo-1106",
-    messages=[
-        {"role": "user", "content": prompt}
-    ]
-)
-
-conversation = intro.choices[0].message.content
-
-# nimmt die konversation und führt die 1. methode darauf aus
 function_one = openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
@@ -135,11 +186,11 @@ function_one = openai.ChatCompletion.create(
     function_call={'name': 'rate_conversation'},
 
 )
-# schreibt diese in einen string und ein json
+
 content_one = function_one["choices"][0]["message"]["function_call"]["arguments"]
 content_json_one = json.loads(content_one)
+print(content_one)
 
-# führt die 2. methode auf die gleiche konversation aus
 function_two = openai.ChatCompletion.create(
     model="gpt-3.5-turbo-1106",
     messages=[
@@ -150,46 +201,35 @@ function_two = openai.ChatCompletion.create(
     function_call={'name': 'thoughts_on_person'},
 
 )
-# schreibt diese in einen string und ein json
+
 content_two = function_two["choices"][0]["message"]["function_call"]["arguments"]
 content_json_two = json.loads(content_two)
 print(content_two)
 
+# diese methode
+persons = [person1, person2]
 
-def process_persons_and_json(persons_array, content_json_str, database):
-    # Convert the JSON string to a dictionary
-    content_json = json.loads(content_json_str)
+def extract_thoughts(data, persons):
+    # Parse the input string as JSON
+    db_host = os.getenv('DB_HOST')
+    db_user = os.getenv('DB_USER')
+    db_password = os.getenv('DB_PASSWORD')
+    db_db = os.getenv('DB_DB')
 
-    # Create a dictionary to map names to pk for quick lookup
-    name_to_pk = {person.name: person.pk for person in persons_array}
-    print(name_to_pk)
-    # Iterate through each entry in the participants array of the JSON
-    for participant in content_json["participants"]:
-        thinker_name = participant["thinker"]["name"]
-        print(thinker_name)
-        # Check if the thinker is in our persons_array
-        if thinker_name in name_to_pk:
-            thinker_pk = name_to_pk[thinker_name]
+    connection = mariadb.connect(host=db_host, user=db_user, passwd=db_password, db=db_db)
+    cursor = connection.cursor()
 
-            # Process each thought
-            for thought in participant["thoughts"]:
-                thought_person_name = thought["name"]
-                thought_content = thought["thought"]
-                print(thought_content)
-                # Check if the thought person is in our persons_array
-                if thought_person_name in name_to_pk:
-                    thought_person_pk = name_to_pk[thought_person_name]
-                    thoughts = database.get_thoughts(thinker_pk, thought_person_pk)
-                    print(len(thoughts))
-                    print(thoughts)
-                    if len(thoughts) == 0:
-                        database.insert_thoughts(thinker_pk, thought_person_pk, thought_content)
-                    elif len(thoughts) != 0:
-                        database.update_thoughts(thinker_pk, thought_person_pk, thought_content)
-                    print(len(thoughts))
-                    # Print the combination of the thinker's pk and the thought person's pk
-                    print((thinker_pk, thought_person_pk))
+    # Initialize an empty dictionary to store name:thoughts pairs
+    thoughts_map = {}
+    pids = [person.pk for person in persons]
+    print(pids)
+
+    # Close the cursor and connection
+    cursor.close()
+    connection.close()
+    return pids
 
 
-process_persons_and_json(persons_array, content_two, database)
+result = extract_thoughts(content_json_two, persons)
+print(result)
 

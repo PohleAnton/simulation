@@ -1,3 +1,9 @@
+"""
+(Obsoleter) Zwischenschritt, um Vektordatenbank präziser nutzen zu können
+"""
+
+
+
 import json
 
 import yaml

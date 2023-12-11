@@ -3,7 +3,7 @@ import yaml
 import os
 import json
 
-from oldstuff.FocusedConversationApproach.GeneratePersonsMethods import both
+from Dokumentation_Verlauf.FocusedConversationApproach import both
 
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
@@ -162,7 +162,7 @@ def wikiresult_from_function_call(result):
     directory = './FocusedConversationApproach/txtFiles/ConversationChunks'
     if not os.path.exists(directory):
         os.makedirs(directory)
-    target_dir = 'oldstuff/FocusedConversationApproach/txtFiles/ConversationChunks/used/'
+    target_dir = 'Dokumentation_Verlauf/FocusedConversationApproach/txtFiles/ConversationChunks/used/'
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
 

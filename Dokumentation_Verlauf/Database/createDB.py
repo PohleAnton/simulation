@@ -1,3 +1,17 @@
+"""
+alle 3 dateien i, Ordner ./Database enstanden aus der Idee, sowohl geführte Gespräche als auch die sich entwickelnden
+Beziehungen in einer relationalen Datenbank zu speichern. Der Versuch wurde nach Konsultation eingestellt, weil v.a.
+für die Erinnerung die Vektordatenbank sehr viel besser geeignet ist.
+Der Ansatz wurde nicht weiter verfolgt - sollte aber vielleicht nicht ganz zu den Akten gelegt werden. Je nach Umfang des
+Experiments könnte es sich lohnen, bspw. Profile zu speichern. Außerdem ganz es ursprünglich die Idee, die Überzeugungskraft
+on einer sich entwickelnden Beziehung abhängig zu machen, hier grob repräsentiert durch CREATE TABLE thoughts_on_person
+- die Entwicklung hätte durch GPT generiert und in der rel. Datenbank gespeichert werden können. Darüber hinaus steht
+die Idee im Raum, vollständig durchgeführte Experimente mit vers. Parametern (Teilnehmer, Profile, tbd) in der Datenbank
+zu speichern und diese Daten später zu nutzen um zu schauen, ob man mit den im Modul zu Beginn vorgestellen Option in sklearn
+nur anhand von gegeben Parametern vorherzusagen, wie ein Experiment ausgehen könnte - simulation oder nicht
+"""
+
+
 import mariadb
 import os
 import yaml

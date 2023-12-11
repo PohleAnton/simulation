@@ -17,7 +17,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-chroma = chromadb.Client()
+
 public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
 first_finished = False

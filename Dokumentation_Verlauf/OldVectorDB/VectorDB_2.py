@@ -1,3 +1,7 @@
+"""
+Inhaltlich fast identisch zu VectorDB.py
+"""
+
 import json
 import random
 
