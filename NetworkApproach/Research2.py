@@ -1,4 +1,5 @@
 import json
+import random
 import re
 
 import openai
@@ -17,8 +18,10 @@ segregation_str = ("\n\n<<<<< ----- >>>>>       <<<<< ----- >>>>>       <<<<< --
 
 
 # https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=de
-def build_payload(query, start=1, num=3):
+def build_payload(query, num, start=1):
     # kann mit date_restict erweitert werden, schränkt Zeit ein
+    if num > 10:
+        num = 10
     payload = {
         'key': google_api_key,
         'q': query,
@@ -41,7 +44,7 @@ def make_request(payload):
     return response.json()
 
 
-def research_web(topic):
+def research_web(topic, num):
     # Option 1: googlesearch
     """
     try:
@@ -114,7 +117,7 @@ def research_web(topic):
 
     # Option 6: Google custom search api
     query = topic + " site:en.wikipedia.org"
-    payload = build_payload(query)  # request parameter vorbereiten
+    payload = build_payload(query, num)  # request parameter vorbereiten
     response = make_request(payload)  # Auf 100 Anfragen pro Tag begrenzt
     result_list = response['items']
     # print(segregation_str, f"Web Search - {query} :\n")
@@ -227,7 +230,8 @@ def get_wikipedia_title(topic):
     return page_py.title
 
 
-def try_wiki_search(given_topic):
+def try_wiki_search(given_topic, num=10):  # hier sollte es bei 10 Webseiten bleiben,
+    # um eine zufällige Auswahl und dadurch unterschiedliche Ergebnisse zu gewährleisten
     """
     research_result = None
     site_exists = does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic)
@@ -236,15 +240,45 @@ def try_wiki_search(given_topic):
 
     return research_result
     """
-    google_result_list = research_web(given_topic)
-    titles_list = extract_titles_of_google_research(google_result_list)
-    summary_list = []
-    for title in titles_list:
-        summary_list.append(get_wikipedia_summary(title))  # nur für Testzwecke
-    str_for_gpt = "\n".join(summary_list)
-    gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
-                                    f"concentrate your focus on details and explanations "
-                                    f"utilizing and combine the following information: {str_for_gpt}")
+    google_result_list = None
+    try:
+        google_result_list = research_web(given_topic, num)
+    except Exception as e:  # TODO vllt passt hier ne andere Exception besser
+        print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Google API ist aufgetreten. "
+                               f"Exception: {e}")
+
+    if google_result_list is not None:
+        extracted_titles_list = extract_titles_of_google_research(google_result_list)
+
+        count_selector = 3  # Zahl der zufälligen Ergebnisse die ausgewählt werden sollen
+        if len(extracted_titles_list) < count_selector:
+            used_titles_list = extracted_titles_list  # wenn kleiner als gewählte Zahl, wird ganze Liste ausgewählt
+        else:
+            used_titles_list = random.sample(extracted_titles_list, count_selector)  # sonst diese Zahl aus der Liste
+
+        summary_list = []
+        try:
+            for title in used_titles_list:
+                summary_list.append(get_wikipedia_summary(title))  # nur für Testzwecke
+        except Exception as e:
+            print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Wikipedia API ist aufgetreten. "
+                                   f"Exception: {e}")
+
+        str_for_gpt = "\n".join(summary_list)
+        gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
+                                        f"focus on details and explanations "
+                                        f"utilizing and combine the following information: {str_for_gpt}")
+    else:
+        message_content = (f"Provide a detailed overview of the topic {given_topic}, "
+                           f"focus on details and explanations")
+        try:
+            if does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic):
+                summary = get_wikipedia_summary(given_topic)
+                message_content += f" utilizing and combine the following information: {summary}"
+        except Exception as e:
+            print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Wikipedia API ist aufgetreten. "
+                                   f"Exception: {e}")
+        gpt_response = get_gpt_response(message_content)
     content_str = get_response_content(gpt_response)
     cleaned_string = content_str.replace("\n\n", "\n")
     # print(segregation_str, f"Content of GPT Response:\n{cleaned_string}")
@@ -252,24 +286,57 @@ def try_wiki_search(given_topic):
     return cleaned_string
 
 
-def organize_research(given_topic):
-    google_result_list = research_web(given_topic)
-    titles_list = extract_titles_of_google_research(google_result_list)
-    summary_list = []
-    title_summary_list = []
+def organize_research(given_topic, num=10):  # hier sollte es bei 10 Webseiten bleiben,
+    # um eine zufällige Auswahl und dadurch unterschiedliche Ergebnisse zu gewährleisten
+    google_result_list = None
+    try:
+        google_result_list = research_web(given_topic, num)
+    except Exception as e:  # TODO vllt passt hier ne andere Exception besser
+        print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Google API ist aufgetreten. "
+                               f"Exception: {e}")
 
-    for title in titles_list:
-        summary = get_wikipedia_summary(title)
-        summary_list.append(summary)
-        title_summary_list.append({"title": title, "summary": summary})
+    if google_result_list is not None:
+        extracted_titles_list = extract_titles_of_google_research(google_result_list)
 
-    output_json = json.dumps(title_summary_list, indent=2)
-    print(output_json)
+        count_selector = 3  # Zahl der zufälligen Ergebnisse die ausgewählt werden sollen
+        if len(extracted_titles_list) < count_selector:
+            used_titles_list = extracted_titles_list  # wenn kleiner als gewählte Zahl, wird ganze Liste ausgewählt
+        else:
+            used_titles_list = random.sample(extracted_titles_list, count_selector)  # sonst diese Zahl aus der Liste
 
-    str_for_gpt = "\n".join(summary_list)
-    gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
-                                    f"concentrate your focus on details and explanations "
-                                    f"utilizing and combine the following information: {str_for_gpt}")
+        print(used_titles_list)
+        summary_list = []
+        title_summary_list = []
+
+        try:
+            for title in used_titles_list:
+                summary = get_wikipedia_summary(title)
+                summary_list.append(summary)
+                title_summary_list.append({"title": title, "summary": summary})
+        except Exception as e:
+            print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Wikipedia API ist aufgetreten. "
+                                   f"Exception: {e}")
+
+        output_json = json.dumps(title_summary_list, indent=2)
+        # print(output_json)
+        str_for_gpt = "\n".join(summary_list)
+        gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
+                                        f"concentrate your focus on details and explanations "
+                                        f"utilizing and combine the following information: {str_for_gpt}")
+    else:
+        message_content = (f"Provide a detailed overview of the topic {given_topic}, "
+                           f"focus on details and explanations")
+        title_summary_list = []
+        try:
+            if does_wikipedia_topic_exists(get_wikipedia_api_instance(given_topic), given_topic):
+                summary = get_wikipedia_summary(given_topic)
+                message_content += f" utilizing and combine the following information: {summary}"
+                title_summary_list.append({"title": given_topic, "summary": summary})
+        except Exception as e:
+            print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Wikipedia API ist aufgetreten. "
+                                   f"Exception: {e}")
+        gpt_response = get_gpt_response(message_content)
+
     content_str = get_response_content(gpt_response)
     cleaned_string = content_str.replace("\n\n", "\n")
     # print(segregation_str, f"Content of GPT Response:\n{cleaned_string}")
