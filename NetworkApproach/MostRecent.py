@@ -21,7 +21,7 @@ chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
 first_finished = False
-extracted_topic = []
+all_topics = []
 # um google request zu sparen:
 wiki_results = {}
 
@@ -187,9 +187,7 @@ def get_profile(participant):
 
 def add_knowledge_to_profile(participant, given_topics):
     global wiki_results
-    global extracted_topic
-    print('1')
-    print(extracted_topic)
+    global all_topics
     knows = []
     unknown = []
     for item in given_topics:
@@ -226,27 +224,22 @@ def add_knowledge_to_profile(participant, given_topics):
             final = res['knowledge']
             # lässt gpt wissen generieren, welches die person wahrscheinlich hat
             write_knowledge_collection(participant, topic, final)
-        print('2')
-        print(extracted_topic)
+
 
     # ToDO TESTING ONLY - THIS CAN stay here though
     for topic in given_topics:
         write_conviction_collection(participant, topic)
-    print('3')
-    print(extracted_topic)
+
     for item in unknown:
         if item in wiki_results:
             unknown.remove(item)
-    print('4')
-    print(extracted_topic)
+
     topic_results = organize_wiki_search(unknown)
-    print('5')
-    print(extracted_topic)
+
     for topic, research_result in topic_results.items():
         wiki_results[topic] = research_result
         write_knowledge_collection(participant, topic, research_result)
-    print('6')
-    print(extracted_topic)
+
 
 # Fügt die Profile der Gesprächsteilnehmer zusammen
 def join_profiles(participants):
@@ -280,7 +273,9 @@ def get_structured_conversation_with_gpt(given_conversation):
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
     global first_finished
-    global extracted_topic
+    global all_topics
+    print('1')
+    print(all_topics)
     conversation_topics = []
     text = get_response_content(given_conversation)
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
@@ -292,12 +287,14 @@ def extract_topics_of_conversation(given_conversation):
 
         for theme in data["themes"]:
             conversation_topics.append(theme['theme'])
+            all_topics.append(theme['theme'])
+            print('2')
+            print(all_topics)
 
 
         public_discussions.add(documents=text, ids=str(start_number))
 
         first_finished = True
-        extracted_topic = conversation_topics
         return conversation_topics
 
     if first_finished:
@@ -307,17 +304,17 @@ def extract_topics_of_conversation(given_conversation):
         proto_topics = []
         for theme in data["themes"]:
             proto_topics.append(theme["theme"])
-        new_topics = compare_themes(extracted_topic, proto_topics)
+        new_topics = compare_themes(all_topics, proto_topics)
         for index, theme in enumerate(data["themes"]):
             if index < len(new_topics):
                 theme["theme"] = new_topics[index]
         for theme in data["themes"]:
             conversation_topics.append(theme['theme'])
-
+            if theme['theme'] not in all_topics:
+                all_topics.append(theme['theme'])
 
         public_discussions.add(documents=text, ids=str(start_number))
 
-        extracted_topic=conversation_topics
         return conversation_topics
 
 
@@ -587,10 +584,10 @@ first_conversation = get_gpt_response(prompt_for_first_conversation)
 print('fertig')
 # Suche bei Wikipedia anstoßen
 
-extracted_topic = extract_topics_of_conversation(first_conversation)
-print(extracted_topic)
+extract_topic = extract_topics_of_conversation(first_conversation)
+
 for participant in initial_participants:
-    add_knowledge_to_profile(participant, extracted_topic)
+    add_knowledge_to_profile(participant, all_topics)
 print('fertig')
 
 
@@ -604,7 +601,8 @@ new_theme = get_best_document('Simulation Hypothesis', 5, True, 0.33)
 themes = ''
 for document in new_theme:
     themes += document
-
+new_topic = ['leipzig', 'wetten dass']
+togetha=compare_themes(all_topics, new_topic)
 
 ##runde 2
 

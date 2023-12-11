@@ -338,7 +338,7 @@ def extract_topics_of_conversation(given_conversation):
         return conversation_topics
 
     if first_finished:
-        global extracted_topic
+        global all_topics
         proto_topics = []
         for theme in data["themes"]:
             proto_topics.append(theme["theme"])
@@ -633,10 +633,10 @@ print('fertig')
 
 # Suche bei Wikipedia anstoßen
 
-extracted_topic = extract_topics_of_conversation(first_conversation)
+all_topics = extract_topics_of_conversation(first_conversation)
 
 for participant in initial_participants:
-    add_knowledge_to_profile(participant, extracted_topic)
+    add_knowledge_to_profile(participant, all_topics)
 print('fertig')
 
 # gets us the closest to the simulation hypothesis

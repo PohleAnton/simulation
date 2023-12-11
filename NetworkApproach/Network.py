@@ -640,7 +640,7 @@ first_conversation = get_gpt_response(prompt_for_first_conversation)
 print(Research.segregation_str, "Response - Content", get_response_content(first_conversation))
 
 # Suche bei Wikipedia anstoßen
-extracted_topic = extract_topics_of_conversation(first_conversation)
+all_topics = extract_topics_of_conversation(first_conversation)
 test_topics = ["Marxism", "Communist revolution"]
 res = query_knowledge_collection('Horst', 'Communist revolution')
 test_participants = ['Horst', 'Rainer']
