@@ -17,24 +17,21 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-
+chroma = chromadb.Client()
 public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 participant_collection = chroma.create_collection(name="participants")
 first_finished = False
+extracted_topic = []
 # um google request zu sparen:
 wiki_results = {}
 
 functions = [
     {
-        "name": "structure_conversation",
-        "description": "A function divides a conversation by its themes, finds subtitles for each theme, and summarizes what each participant had to say about that subject",
+        "name": "find_topics",
+        "description": "A function that finds subtitles for each theme that was brought up in a conversation",
         "parameters": {
             "type": "object",
             "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Brief description of the conversation and who took part"
-                },
                 "themes": {
                     "type": "array",
                     "description": "A list of all the themes that came up",
@@ -44,27 +41,6 @@ functions = [
                             "theme": {
                                 "type": "string",
                                 "description": "Each theme that has been brought up - what the most fitting Wikipedia-article might be called"
-                            },
-                            "content": {
-                                "type": "array",
-                                "description": "What each participant said about that subject",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {
-                                            "type": "string",
-                                            "description": "Name of the participant. "
-                                        },
-                                        "summary": {
-                                            "type": "string",
-                                            "description": "Long and detailed description of what they said about the subject. Start like this: \"I think...\""
-                                        },
-                                        "liking": {
-                                            "type": "string",
-                                            "description": "How much the participant liked that part of the conversation on this scale: a lot, a little, not at all. Always write like this:  {name} likes it  {rating}"
-                                        },
-                                    }
-                                }
                             }
                         }
                     }
@@ -86,7 +62,7 @@ functions = [
         }
     },
     {
-        "name": "generate_conviction",
+        "name": "create_conviction",
         "description": "A function that generates the likely inner thoughts of a participant about a subject",
         "parameters": {
             "type": "object",
@@ -207,22 +183,17 @@ def get_profile(participant):
     return res
 
 
-"""
-def get_filled_knowledge_scheme_for_participant(participant, given_topics):
-    # file_path = knowledge_directory + "/" + get_file_name(participant)
-    input_content = (f"organize_knowledge of {given_topics} for {participant}")
-    response = get_gpt_response_with_function(input_content, functions)
-    filled_knowledge_scheme = get_response_content(response)
-    # write_in_file(file_path, knowledge, "x") # erstellt neue Datei
-    print(Research.segregation_str, f"Knowledge scheme for : {participant}\n\n", filled_knowledge_scheme)
-    return filled_knowledge_scheme
-"""
 
 
 def add_knowledge_to_profile(participant, given_topics):
     global wiki_results
+    global extracted_topic
+    print('1')
+    print(extracted_topic)
     knows = []
-    unknown = given_topics
+    unknown = []
+    for item in given_topics:
+        unknown.append(item)
     for topic in given_topics:
         if has_participant_knowledge(participant, topic):
             unknown.remove(topic)
@@ -247,26 +218,35 @@ def add_knowledge_to_profile(participant, given_topics):
                 ],
                 functions=functions
             )
+            try:
+                res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
+            except json.decoder.JSONDecodeError:
+                res = json.dumps(response["choices"][0]["message"]["function_call"]["arguments"])
 
-            res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
             final = res['knowledge']
             # lässt gpt wissen generieren, welches die person wahrscheinlich hat
             write_knowledge_collection(participant, topic, final)
+        print('2')
+        print(extracted_topic)
 
     # ToDO TESTING ONLY - THIS CAN stay here though
     for topic in given_topics:
         write_conviction_collection(participant, topic)
-
+    print('3')
+    print(extracted_topic)
     for item in unknown:
         if item in wiki_results:
             unknown.remove(item)
-
+    print('4')
+    print(extracted_topic)
     topic_results = organize_wiki_search(unknown)
-
+    print('5')
+    print(extracted_topic)
     for topic, research_result in topic_results.items():
         wiki_results[topic] = research_result
         write_knowledge_collection(participant, topic, research_result)
-
+    print('6')
+    print(extracted_topic)
 
 # Fügt die Profile der Gesprächsteilnehmer zusammen
 def join_profiles(participants):
@@ -284,7 +264,7 @@ def get_response_content(given_response):
 
 # Antons Code zum Strukturieren der Conversation
 def get_structured_conversation_with_gpt(given_conversation):
-    vector_test = get_gpt_response_with_function('structure_conversation'
+    vector_test = get_gpt_response_with_function('find_topics'
                                                  + get_response_content(given_conversation),
                                                  functions)
 
@@ -300,37 +280,30 @@ def get_structured_conversation_with_gpt(given_conversation):
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
     global first_finished
+    global extracted_topic
     conversation_topics = []
-    chroma_metadatas = []
-    chroma_documents = []
-    chroma_ids = []
+    text = get_response_content(given_conversation)
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
     print('vor bug?')
     data = get_structured_conversation_with_gpt(given_conversation)
     print('after bug')
 
     if not first_finished:
+
         for theme in data["themes"]:
             conversation_topics.append(theme['theme'])
-            chroma_ids.append(start_number)
-            start_number += 1
-            if 'liking' in theme['content'][0]:
-                chroma_documents.append(
-                    '\n\n'.join(
-                        [f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]]))
-            else:
-                chroma_documents.append(
-                    '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]]))
 
-            chroma_metadatas.append({'theme': theme['theme']})
 
-        chroma_ids = [str(id) for id in chroma_ids]
-        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
+        public_discussions.add(documents=text, ids=str(start_number))
+
         first_finished = True
+        extracted_topic = conversation_topics
         return conversation_topics
 
     if first_finished:
-        global extracted_topic
+
+
+
         proto_topics = []
         for theme in data["themes"]:
             proto_topics.append(theme["theme"])
@@ -340,20 +313,11 @@ def extract_topics_of_conversation(given_conversation):
                 theme["theme"] = new_topics[index]
         for theme in data["themes"]:
             conversation_topics.append(theme['theme'])
-            chroma_ids.append(start_number)
-            start_number += 1
-            if 'liking' in theme['content'][0]:
-                chroma_documents.append(
-                    '\n\n'.join(
-                        [f'{entry["name"]}:\n{entry["summary"]} {entry["liking"]}' for entry in theme["content"]]))
-            else:
-                chroma_documents.append(
-                    '\n\n'.join([f'{entry["name"]}:\n{entry["summary"]}' for entry in theme["content"]]))
 
-            chroma_metadatas.append({'theme': theme['theme']})
 
-        chroma_ids = [str(id) for id in chroma_ids]
-        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
+        public_discussions.add(documents=text, ids=str(start_number))
+
+        extracted_topic=conversation_topics
         return conversation_topics
 
 
@@ -429,11 +393,8 @@ def query_knowledge_collection(participant, topic, n_results=1):
 
 def get_latest_conviction(participant, topic):
     collection_name = participant.replace(' ', '') + 'Conviction'
-    print('you made it heere')
     try:
-        print('also here')
         id = get_latest_conviction_id(participant, topic)
-        print('but not here')
         last_conviction = globals()[collection_name].get(ids=[id])
         return last_conviction['documents'][0]
     except IndexError:
@@ -497,9 +458,10 @@ def write_conviction_collection(participant, topic, arguments=''):
                         model="gpt-3.5-turbo-1106",
                         messages=[
                             {"role": "user",
-                             "content": f"generate_conviction for {participant} about subject {topic}."}
+                             "content": f"create_conviction for {participant} about subject {topic}."}
                         ],
-                        functions=functions
+                        functions=functions,
+                        function_call={'name': 'create_conviction'}
                     )
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
@@ -511,9 +473,10 @@ def write_conviction_collection(participant, topic, arguments=''):
                     model="gpt-3.5-turbo-1106",
                     messages=[
                         {"role": "user",
-                         "content": f"generate_conviction for {participant} about subject {topic}."}
+                         "content": f"create_conviction for {participant} about subject {topic}."}
                     ],
-                    functions=functions
+                    functions=functions,
+                    function_call={'name': 'create_conviction'}
                 )
                 result = res["choices"][0]["message"]["function_call"]["arguments"]
                 res_json = json.loads(result)
@@ -526,9 +489,10 @@ def write_conviction_collection(participant, topic, arguments=''):
             model="gpt-3.5-turbo-1106",
             messages=[
                 {"role": "user",
-                 "content": "generate_conviction for Karl Marx subject Simulation Hypothesis."}
+                 "content": f"create_conviction for {participant} subject {topic}."}
             ],
-            functions=functions
+            functions=functions,
+            function_call={'name': 'create_conviction'}
         )
         result = res["choices"][0]["message"]["function_call"]["arguments"]
         res_json = json.loads(result)
@@ -582,7 +546,7 @@ def compare_themes(prior_topic, new_topics):
 
 # GPT und Txt Zeug, Konstanten festlegen
 initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
-test_participants = ['Horst Schlemmer', 'Rainer Zufall']
+
 profile_directory = 'NetworkApproach/txtFiles/Profiles'
 os.makedirs(profile_directory, exist_ok=True)
 chunk_directory = 'NetworkApproach/txtFiles/ConversationChunks'
@@ -619,17 +583,16 @@ fill_profile_schemes_for_participants(initial_participants)
 
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
-print(prompt_for_first_conversation)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
 print('fertig')
-
 # Suche bei Wikipedia anstoßen
 
 extracted_topic = extract_topics_of_conversation(first_conversation)
-
+print(extracted_topic)
 for participant in initial_participants:
     add_knowledge_to_profile(participant, extracted_topic)
 print('fertig')
+
 
 # gets us the closest to the simulation hypothesis
 new_theme = public_discussions.query(query_texts="Ideals")

@@ -304,7 +304,7 @@ def organize_research(given_topic, num=10):  # hier sollte es bei 10 Webseiten b
         else:
             used_titles_list = random.sample(extracted_titles_list, count_selector)  # sonst diese Zahl aus der Liste
 
-        print(used_titles_list)
+        #print(used_titles_list)
         summary_list = []
         title_summary_list = []
 
@@ -350,8 +350,8 @@ def extract_titles_of_google_research(google_result_list):
                         else item.get("title", "") for item in google_result_list]
 
     # Gib die extrahierten "title" aus
-    for title in extracted_titles:
-        print(title)
+    #for title in extracted_titles:
+        #print(title)
 
     return extracted_titles
 
@@ -413,7 +413,7 @@ def get_gpt_response_with_research(topic):
             messages=messages,
         )
         research_result_content = second_response.choices[0].message.content
-        print(segregation_str, "GPT - Response for: ", topic, "\n\n", research_result_content)
+        #print(segregation_str, "GPT - Response for: ", topic, "\n\n", research_result_content)
         return research_result_content
 
 
