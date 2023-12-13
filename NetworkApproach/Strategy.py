@@ -1,5 +1,6 @@
 import os
 import random
+import re
 
 import openai
 import yaml
@@ -73,7 +74,7 @@ def generate_belief(participant, topic):
     prompt = f"Generate a belief for topic {topic} that {participant} could have!"
     response = get_gpt_response(prompt)
     res_content = get_response_content(response)
-    print(segregation_str, f"Belief of {participant}:\n{res_content}")
+    # print(segregation_str, f"Belief of {participant}:\n{res_content}")
     return res_content
 
 
@@ -84,8 +85,27 @@ def formulate_argument(participant, belief):
               f"Formulate an argument for this belief {belief}!")
     response = get_gpt_response(prompt)
     res_content = get_response_content(response)
-    print(segregation_str, f"Argument of {participant}:\n{res_content}")
+    # print(segregation_str, f"Argument of {participant}:\n{res_content}")
     return res_content
+
+
+def evaluate_argument(convincer_name, convincer_belief, convincer_arg, tester_name, tester_belief):
+    prompt = (f"Given the belief of {convincer_name}: {convincer_belief}"
+              f"\nGiven the argument of {convincer_name}: {convincer_arg}. "
+              f"\nGiven the belief of {tester_name}: {tester_belief}"
+              f"\nDeterminate on a scale from 0% to 100%: How likely is it, "
+              f"that {convincer_name} would convince {tester_name}?"
+              f"Just give the percentage!!!")
+    response = get_gpt_response(prompt)
+    res_content = get_response_content(response)
+    print(segregation_str, f"GPT - Evaluation of argument of {convincer_name} "
+                           f"to convince {tester_name}:\n{res_content}")
+    likelihood = [int(num) for num in re.findall(r'\d+', res_content)]
+    if len(likelihood) == 0:
+        print("likelihood is not available")
+        return 0
+    print(likelihood[0])
+    return likelihood[0]
 
 
 def choose_strategy():
@@ -149,4 +169,28 @@ initial_arguments = []
 for i in range(len(initial_participants)):
     initial_arguments.append(formulate_argument(initial_participants[i], initial_beliefs[i]))
 
-conversation = convincing_conversation(initial_participants, initial_beliefs, initial_arguments)
+best_arguments = []
+for i in range(len(initial_participants)):
+    for j in range(len(initial_participants)):
+        # Vergleiche nur verschiedene Elemente
+        if i != j:
+            convincer = initial_participants[i]
+            con_bel = initial_beliefs[i]
+            con_arg = initial_arguments[i]
+            tester = initial_participants[j]
+            tester_bel = initial_beliefs[j]
+            evaluation = evaluate_argument(convincer, con_bel, con_arg, tester, tester_bel)
+            try_count = 0
+            last_evaluation = evaluation
+            if last_evaluation < 50:  # sollte nicht mind 50 % Überzeugungswahrscheinlichkeit sein
+                while try_count < 2 and last_evaluation < 50:
+                    try_count += 1
+                    con_arg_next = formulate_argument(convincer, con_bel)  # neues Argument formulieren
+                    next_evaluation = evaluate_argument(convincer, con_bel, con_arg_next, tester, tester_bel)
+                    if next_evaluation > last_evaluation:  # Argument ersetzen, wenn es besser ist
+                        con_arg = con_arg_next
+                    last_evaluation = next_evaluation
+            best_arguments.append(con_arg)  # bestes Argument in die liste tun
+
+conversation = convincing_conversation(initial_participants, initial_beliefs, best_arguments)
+# TODO generelle Einbindung der Chroma DB um Wissen, Profile, Überzeugungen zu schreiben/bekommen/aktualisieren
