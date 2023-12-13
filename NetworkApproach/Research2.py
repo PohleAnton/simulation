@@ -144,7 +144,7 @@ def research_web(topic, num):
 
 
 def print_json_in_pretty(given_json):
-    print(json.dumps(given_json, indent=4))
+    print(json.dumps(given_json, ensure_ascii=False, indent=4))
 
 
 def get_wikipedia_api_instance(topic):
@@ -220,7 +220,7 @@ def get_wikipedia_text(topic):
     # Für Testzwecke
     check_minimal_parameters(page_py)
 
-    return json.dumps(text)
+    return json.dumps(text, ensure_ascii=False,)
 
 
 # Sucht für das übergebene Thema den expliziten Titel des Wikipedia Eintrags
@@ -317,7 +317,7 @@ def organize_research(given_topic, num=10):  # hier sollte es bei 10 Webseiten b
             print(segregation_str, "ACHTUNG!!! Eine Exception beim Aufruf der Wikipedia API ist aufgetreten. "
                                    f"Exception: {e}")
 
-        output_json = json.dumps(title_summary_list, indent=2)
+        output_json = json.dumps(title_summary_list, ensure_ascii=False, indent=2)
         # print(output_json)
         str_for_gpt = "\n".join(summary_list)
         gpt_response = get_gpt_response(f"Provide a detailed overview of the topic {given_topic}, "
