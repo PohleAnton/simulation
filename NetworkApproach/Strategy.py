@@ -193,3 +193,4 @@ for i in range(len(initial_participants)):
             best_arguments.append(con_arg)  # bestes Argument in die liste tun
 
 conversation = convincing_conversation(initial_participants, initial_beliefs, best_arguments)
+# TODO generelle Einbindung der Chroma DB um Wissen, Profile, Überzeugungen zu schreiben/bekommen/aktualisieren
