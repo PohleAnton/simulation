@@ -28,10 +28,19 @@ wiki_results = {}
 functions = [
     {
         "name": "find_topics",
-        "description": "A function that finds subtitles for each theme that was brought up in a conversation",
+        "description": "A function that finds broad subtitles for each theme that was brought up in a conversation. It limits the number of subtitles to four or fewer, ensuring they are broad and encompassing, while considering the entire text",
         "parameters": {
             "type": "object",
             "properties": {
+                "conversation": {
+                    "type": "string",
+                    "description": "The full text of the conversation to analyze for themes"
+                },
+                "max_subtitles": {
+                    "type": "integer",
+                    "description": "Maximum number of subtitles to find, set to 4 or fewer",
+                    "default": 4
+                },
                 "themes": {
                     "type": "array",
                     "description": "A list of all the themes that came up",
@@ -45,9 +54,48 @@ functions = [
                         }
                     }
                 }
-            }
+            },
+            "required": ["conversation", "themes", "max_subtitles"]
         }
     },
+    {
+        "name": "split_conversation",
+        "description": "Splits a conversation into parts that discuss given topics, with each part including 400 characters of context in each direction around it. The function ensures that the entire conversation is included in the output, with overlapping content where necessary to provide context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "conversation": {
+                    "type": "string",
+                    "description": "The full conversation text to be analyzed and split"
+                },
+                "themes": {
+                    "type": "array",
+                    "description": "List of topics. Each topic's related conversation part will include 400 characters of context in each direction. Overlapping of conversation parts is allowed to ensure full coverage and context.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "theme": {
+                                "type": "string",
+                                "description": "The given topic"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The part of the conversation that discusses this topic, including 400 characters of context in each direction. Parts of the conversation may be repeated in different themes for complete coverage."
+                            }
+                        }
+                    }
+                },
+                "context_amount": {
+                    "type": "integer",
+                    "default": 400,
+                    "description": "A fixed amount of 400 characters of surrounding text to include in each direction with each topic-related part of the conversation. This ensures generous context for each theme."
+                }
+            },
+            "required": ["conversation", "themes", "context_amount"]
+        }
+    }
+
+    ,
     {
         "name": "generate_knowledge",
         "description": "A function that generates a summary of what a given person might know about a given topic",
@@ -183,8 +231,6 @@ def get_profile(participant):
     return res
 
 
-
-
 def add_knowledge_to_profile(participant, given_topics):
     global wiki_results
     global all_topics
@@ -224,7 +270,6 @@ def add_knowledge_to_profile(participant, given_topics):
             final = res['knowledge']
             # lässt gpt wissen generieren, welches die person wahrscheinlich hat
             write_knowledge_collection(participant, topic, final)
-
 
     # ToDO TESTING ONLY - THIS CAN stay here though
     for topic in given_topics:
@@ -274,32 +319,51 @@ def get_structured_conversation_with_gpt(given_conversation):
 def extract_topics_of_conversation(given_conversation):
     global first_finished
     global all_topics
-    print('1')
     print(all_topics)
     conversation_topics = []
+    chroma_metadatas = []
+    chroma_documents = []
+    chroma_ids = []
     text = get_response_content(given_conversation)
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
     print('vor bug?')
-    data = get_structured_conversation_with_gpt(given_conversation)
-    print('after bug')
 
+    topics = get_structured_conversation_with_gpt(given_conversation)
+    print(topics)
+    print(type(topics))
+    given_topics = ','.join(theme['theme'] for theme in topics['themes'])
+    data = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=[
+            {"role": "user",
+             "content": f"split_conversation {text} for topics {given_topics}"}
+        ],
+        functions=functions,
+        function_call={'name': 'split_conversation'}
+    )
+
+    data = data['choices'][0]['message']['function_call']['arguments']
+    try:
+        new_data = json.loads(data)
+    except json.decoder.JSONDecodeError:
+        new_data = json.dumps(data)
+    print('after bug')
     if not first_finished:
 
-        for theme in data["themes"]:
+        for theme in new_data["themes"]:
             conversation_topics.append(theme['theme'])
             all_topics.append(theme['theme'])
-            print('2')
-            print(all_topics)
+            chroma_ids.append(start_number)
+            start_number += 1
+            chroma_documents.append(theme['content'])
+            chroma_metadatas.append({'theme': theme['theme']})
 
-
-        public_discussions.add(documents=text, ids=str(start_number))
-
+        chroma_ids = [str(id) for id in chroma_ids]
+        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
         first_finished = True
         return conversation_topics
 
     if first_finished:
-
-
 
         proto_topics = []
         for theme in data["themes"]:
@@ -312,8 +376,12 @@ def extract_topics_of_conversation(given_conversation):
             conversation_topics.append(theme['theme'])
             if theme['theme'] not in all_topics:
                 all_topics.append(theme['theme'])
+            chroma_ids.append(start_number)
+            start_number += 1
+            chroma_documents.append(theme['content'])
+            chroma_metadatas.append({'theme': theme['theme']})
 
-        public_discussions.add(documents=text, ids=str(start_number))
+        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
 
         return conversation_topics
 
@@ -581,14 +649,20 @@ fill_profile_schemes_for_participants(initial_participants)
 # erste Conversation erstellen
 prompt_for_first_conversation = prompt_p1 + join_profiles(initial_participants)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
+con = first_conversation['choices'][0]['message']['content']
 print('fertig')
-# Suche bei Wikipedia anstoßen
+
 
 extract_topic = extract_topics_of_conversation(first_conversation)
 
+res=query_public_discussions('simulation', 4)
+
 for participant in initial_participants:
-    add_knowledge_to_profile(participant, all_topics)
+    add_knowledge_to_profile(participant, extract_topic)
 print('fertig')
+
+
+
 
 
 # gets us the closest to the simulation hypothesis
@@ -602,7 +676,8 @@ themes = ''
 for document in new_theme:
     themes += document
 new_topic = ['leipzig', 'wetten dass']
-togetha=compare_themes(all_topics, new_topic)
+togetha = compare_themes(all_topics, new_topic)
+
 
 ##runde 2
 
