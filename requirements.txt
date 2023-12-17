@@ -13,3 +13,4 @@ requests~=2.31.0
 
 nltk~=3.8.1
 requests~=2.31.0
+Twisted~=22.10.0

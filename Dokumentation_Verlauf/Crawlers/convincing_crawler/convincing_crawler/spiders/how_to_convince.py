@@ -2,6 +2,12 @@ import scrapy
 from collections import Counter
 import re
 
+#Spider, den man nutzen könnte, um die bestmöglichste Überzeugungsstrategie zu ermitteln,
+#welche dann wiederrum in den Konversationen genutzt werden kann,
+#damit die Agents Wissen zu guten Überzeugungsstrategien haben.
+
+#Zum aktuellen Zeitpunkt sind wir nicht sicher, ob wir die Crawler in unsere copy.py einbinden
+#werden oder nicht
 class ConvincingSpider(scrapy.Spider):
     name = 'how_to_convince'
     start_urls = [
@@ -17,6 +23,7 @@ class ConvincingSpider(scrapy.Spider):
         for score, paragraph in top_paragraphs:
             yield {'text': paragraph}
 
+#Es wird speziell nach Paragraphen gesucht, die relevante Inhalte zu Überzeugungsstrategien enthalten
     def score_paragraph(self, paragraph):
         keywords = ['überzeugen', 'Technik', 'Strategie', 'Argument', 'Kommunikation']
         words = re.findall(r'\w+', paragraph)
@@ -24,6 +31,7 @@ class ConvincingSpider(scrapy.Spider):
         score = sum(word_count.get(word, 0) for word in keywords)
         return score
 
+#Alle irrelevanten
     def is_relevant(self, text):
         irrelevant_keywords = ['Newsletter', 'wikiHow', 'Referenzen', 'Autoren', 'anmelden', 'Registriere', 'Mitverfassern', 'aufgerufen']
         return not any(keyword in text for keyword in irrelevant_keywords)

@@ -1,7 +1,14 @@
 import scrapy
 from collections import Counter
 import re
+#Vorgehensweise wie man die Topics aus unserer copy.py in der Google API nutzen würde
+#In diesem Fall sollte die Google API die URLs der ersten drei Suchergebnisse zu den Topics
+#dem Crawler übergeben, welcher wiederrum die relevanten Parts der Seiten extrahiert und in einer
+#JSON speichert.
+#Das JSON soll dann wiederrum in der copy.py genutzt werden, um die Informationen an die Agents bzw.
+#Personen zu geben, die diese Informationen in der Konversation nutzen
 
+#Ob es sinnvoll ist, das Scraping der Seiten in unsere Konversationen zu geben, ist nicht sicher.
 class TopicsSpider(scrapy.Spider):
     name = 'topics'
     start_urls = [
