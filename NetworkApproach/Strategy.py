@@ -6,6 +6,7 @@ import openai
 import yaml
 
 from NetworkApproach import Research2
+import MostRecent
 
 # from NetworkApproach.copy import get_profile, fill_profile_schemes_for_participants
 
@@ -80,7 +81,7 @@ def generate_belief(participant, topic):
 
 def formulate_argument(participant, belief):
     strategy_name, strategy_content = choose_strategy()
-    knowledge = ""  # TODO Wissen müsste irgendwie aus Chroma kommen
+    knowledge = MostRecent.query_knowledge_collection(participant)
     prompt = (f"Given this persuasion strategy {strategy_name} ({strategy_content}) and this knowledge {knowledge}. "
               f"Formulate an argument for this belief {belief}!")
     response = get_gpt_response(prompt)
