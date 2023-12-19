@@ -28,13 +28,18 @@ wiki_results = {}
 functions = [
     {
         "name": "find_topics",
-        "description": "A function that finds broad subtitles for each theme that was brought up in a conversation. It tries to keep the number of subtitles low, ensuring they are broad and encompassing, while still ensuring that the entire text is being considered",
+        "description": "A function that finds broad subtitles for each theme that was brought up in a conversation. It limits the number of subtitles to four or fewer, ensuring they are broad and encompassing, while considering the entire text",
         "parameters": {
             "type": "object",
             "properties": {
                 "conversation": {
                     "type": "string",
                     "description": "The full text of the conversation to analyze for themes"
+                },
+                "max_subtitles": {
+                    "type": "integer",
+                    "description": "Maximum number of subtitles to find, set to 4 or fewer",
+                    "default": 4
                 },
                 "themes": {
                     "type": "array",
@@ -50,7 +55,7 @@ functions = [
                     }
                 }
             },
-            "required": ["conversation", "themes"]
+            "required": ["conversation", "themes", "max_subtitles"]
         }
     },
     {
