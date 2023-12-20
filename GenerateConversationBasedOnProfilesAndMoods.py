@@ -11,8 +11,8 @@ openai.api_key = cfg.get('openai')
 os.environ['OPENAI_API_KEY'] = cfg.get('openai')
 
 #Pfade zu den Ordnern aus welchen die Personenprofile und die Moods stammen
-person_profile_path= "/PersonProfiles"
-mood_and_conversation_dynamic_path = "/MoodAndConversationDynamics"
+person_profile_path= "Dokumentation_Verlauf/PersonProfiles"
+mood_and_conversation_dynamic_path = "Dokumentation_Verlauf/MoodAndConversationDynamics"
 
 def get_random_file_content(directory):
     # Stellt sicher, dass das Verzeichnis existiert und Textdateien enthält

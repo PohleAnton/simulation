@@ -60,7 +60,7 @@ functions = [
     },
     {
         "name": "split_conversation",
-        "description": "Splits a conversation into parts that discuss given topics, with each part including 400 characters of context in each direction around it. The function ensures that the entire conversation is included in the output, with overlapping content where necessary to provide context.",
+        "description": "Splits a conversation into parts that discuss given topics, with each part including at least 400 characters of context in each direction around it. The function ensures that the entire conversation is included in the output, with overlapping content where necessary to provide context.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -70,7 +70,7 @@ functions = [
                 },
                 "themes": {
                     "type": "array",
-                    "description": "List of topics. Each topic's related conversation part will include 400 characters of context in each direction. Overlapping of conversation parts is allowed to ensure full coverage and context.",
+                    "description": "List of topics. Each topic's related conversation part will include at least 400 characters of context in each direction. Overlapping of conversation parts is allowed to ensure full coverage and context.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -80,22 +80,35 @@ functions = [
                             },
                             "content": {
                                 "type": "string",
-                                "description": "The part of the conversation that discusses this topic, including 400 characters of context in each direction. Parts of the conversation may be repeated in different themes for complete coverage."
+                                "description": "The part of the conversation that discusses this topic, including at least 400 characters of context in each direction. Parts of the conversation may be repeated in different themes for complete coverage."
                             }
                         }
                     }
                 },
+
+            },
+            "required": ["conversation", "themes"]
+        }
+    },
+    {
+        "name": "analyze_and_split_conversation",
+        "description": "This function identifies broad themes within a conversation and then splits the conversation into parts discussing these themes. Each part includes 400 characters of context in each direction. The function aims to keep the number of identified themes reasonably low to maintain focus, while ensuring the entire conversation is included in the output with overlapping content where necessary for context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "conversation": {
+                    "type": "string",
+                    "description": "The full conversation text to be analyzed for themes and then split"
+                },
                 "context_amount": {
                     "type": "integer",
                     "default": 400,
-                    "description": "A fixed amount of 400 characters of surrounding text to include in each direction with each topic-related part of the conversation. This ensures generous context for each theme."
+                    "description": "A fixed amount of 400 characters of surrounding text to include in each direction with each identified theme in the conversation. This ensures generous context for each theme."
                 }
             },
-            "required": ["conversation", "themes", "context_amount"]
+            "required": ["conversation", "context_amount"]
         }
-    }
-
-    ,
+    },
     {
         "name": "generate_knowledge",
         "description": "A function that generates a summary of what a given person might know about a given topic",
@@ -319,7 +332,7 @@ def get_structured_conversation_with_gpt(given_conversation):
 def extract_topics_of_conversation(given_conversation):
     global first_finished
     global all_topics
-    print(all_topics)
+
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
@@ -351,11 +364,12 @@ def extract_topics_of_conversation(given_conversation):
     if not first_finished:
 
         for theme in new_data["themes"]:
+            print(new_data)
             conversation_topics.append(theme['theme'])
             all_topics.append(theme['theme'])
             chroma_ids.append(start_number)
             start_number += 1
-            chroma_documents.append(theme['content'])
+            chroma_documents.append(theme['conversation'])
             chroma_metadatas.append({'theme': theme['theme']})
 
         chroma_ids = [str(id) for id in chroma_ids]
@@ -610,7 +624,7 @@ def compare_themes(prior_topic, new_topics):
 
 
 # GPT und Txt Zeug, Konstanten festlegen
-initial_participants = ['Karl Marx', 'Peter Thiel', 'Elon Musk']
+initial_participants = [ 'Roger Penrose', 'Elon Musk']
 
 profile_directory = 'NetworkApproach/txtFiles/Profiles'
 os.makedirs(profile_directory, exist_ok=True)
@@ -652,18 +666,44 @@ first_conversation = get_gpt_response(prompt_for_first_conversation)
 con = first_conversation['choices'][0]['message']['content']
 print('fertig')
 
+response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=[
+            {"role": "user",
+             "content": f"fanalyze_and_split_conversation {con}"}
+        ],
+        functions=functions
+    )
+r = response['choices'][0]['message']['function_call']['arguments']
+
+themes= 'Space Exploration,Consciousness and Reality,Artificial Intelligence,Simulation Hypothesis'
+
+
+
+t = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-1106",
+        messages=[
+            {"role": "user",
+             "content": f"split_conversation {con} into themes {themes}"}
+        ],
+        functions=functions,
+        function_call={'name': 'split_conversation'},
+    )
+
+tt = t['choices'][0]['message']['function_call']['arguments']
+print(tt)
 
 extract_topic = extract_topics_of_conversation(first_conversation)
 
-res=query_public_discussions('simulation', 4)
+res = query_public_discussions('simulation', 4)
+
+
+
+
 
 for participant in initial_participants:
     add_knowledge_to_profile(participant, extract_topic)
 print('fertig')
-
-
-
-
 
 # gets us the closest to the simulation hypothesis
 new_theme = public_discussions.query(query_texts="Ideals")
