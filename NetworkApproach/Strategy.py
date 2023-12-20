@@ -157,6 +157,7 @@ pre_prompt = (
     "4. Setting: New Year‘s Eve Party. All might have had a few drinks already "
     "5. Involved Individuals: "
 )
+"""
 test_topic = "Simulation Hypothesis"
 
 # Programmablauf
@@ -194,3 +195,4 @@ for i in range(len(initial_participants)):
 
 conversation = convincing_conversation(initial_participants, initial_beliefs, best_arguments)
 # TODO generelle Einbindung der Chroma DB um Wissen, Profile, Überzeugungen zu schreiben/bekommen/aktualisieren
+"""
