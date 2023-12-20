@@ -23,6 +23,7 @@ all_topics = []
 # um google request zu sparen:
 wiki_results = {}
 all_on_board = False
+all_against = False
 
 token_saver = ({
     "conversation": "Roger: (approaching Elon at the New Year's Eve party) Well, well, well, if it isn't the man who believes he's going to colonize Mars before I figure out the true nature of the universe.\n\nElon: (smirking) Always a pleasure to see you, Roger. I see you're still trying to crack the code of consciousness and the cosmos. Good luck with that.\n\nRoger: (rolling his eyes) Oh please, don't act like your endeavors in space exploration and artificial intelligence are any less ambitious or quixotic. You may get to Mars, but I will unravel the mysteries of the universe before you even set foot on the red planet.\n\nElon: (leaning in, a glint of determination in his eye) You may be a genius in mathematical physics, but I'm the one making history with SpaceX and Tesla. My innovations will change the world as we know it.\n\nRoger: (chuckling) Change the world? I'm more interested in understanding the very fabric of reality itself. Have you ever considered the possibility that we could be living in a simulation?\n\nElon: (frowning) Ah, the old simulation hypothesis. It's an intriguing idea, but I prefer to focus on tangible, practical advancements. Who cares if we're living in a simulation if we can't even make sustainable energy a reality?\n\nRoger: (leaning back, taking a sip of his drink) Ah, there it is - your obsession with practicality and material progress. But what about the deeper questions, Elon? What about the nature of our consciousness and its connection to the universe?\n\nElon: (leaning in, his voice low and intense) Consciousness is just a byproduct of our neural networks. It's all about the algorithms and code. Once we crack the code, we can enhance and even manipulate consciousness itself. It's all about the tech, Roger.\n\nRoger: (shaking his head, a hint of frustration creeping into his voice) You can't reduce consciousness to mere algorithms and code, Elon. There's something deeper at play here, something that transcends the physical world. We need to look beyond the material and embrace the mysteries of the cosmos.\n\nElon: (raising an eyebrow) Mysteries of the cosmos, you say? Well, while you're off pondering the mysteries, I'll be out there in the real world, making things happen. Let's agree to disagree, shall we?\n\nRoger: (sighing) Fine, Elon. But just remember, while you're focused on Mars and AI, I'll be here, pushing the boundaries of human understanding. Here's to another year of our intellectual sparring, old friend.\n\nElon: (smirking) Cheers to that, Roger. Let's see who comes out on top in the end.",
@@ -133,7 +134,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Inner most believe of a participant about a subject. Subjective, critical and emotional. Write in first person from the perspective of the participant only. "
+                    "description": "First person perspective of the participant, Inner most believe of a participant about a subject. Radical, emotional and subjective"
                 }
             }
         }
@@ -146,7 +147,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "New, detailed description of inner most thoughts about a subject. Based on prior conviction and arguments. Write in first person only."
+                    "description": "First person perspective of the participant. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle."
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
@@ -575,7 +576,7 @@ def add_knowledge_to_profile(participant, given_topics):
 
 
 def get_yes_or_no(topic):
-    n = public_discussions.get(where={['theme']: topic})
+    n = public_discussions.get(where={'theme': topic})
     t = n['metadatas'][0]['issue']
     return t
 
@@ -694,12 +695,19 @@ def argument_vs_conviction(argument, listener, chosen_topic):
 
 def lets_goooooo(participants,chosen_topic):
     global all_on_board
+    global all_against
+    all_against = True
+    all_on_board = True
     for participant in participants:
         res = judge_concivtion(participant,chosen_topic)
-        all_on_board = 'yes' in res.lower()
-        if not all_on_board:
-            break
-    return all_on_board
+
+        if 'no' in res.lower():
+            all_on_board = False
+
+        if 'yes' in res.lower():
+            all_against = False
+
+    return all_on_board, all_against
 
 
 
@@ -742,46 +750,89 @@ fill_profile_schemes_for_participants(initial_participants)
 prompt_for_first_conversation = prompt_p3 + join_profiles(initial_participants)
 first_conversation = get_gpt_response(prompt_for_first_conversation)
 # ToDo print in Streamlit:
-con = first_conversation['choices'][0]['message']['content']
+conversation = first_conversation['choices'][0]['message']['content']
 extract_topic = extract_topics_of_conversation(first_conversation)
 
-print('fertig')
+# write_conviction_collection('Karl Marx', 'Simulation Hypothesis')
+# r = get_latest_conviction('Karl Marx', 'Simulation Hypothesis')
+# print(r)
+# t = judge_concivtion('Karl Marx', 'Simulation Hypothesis')
+# print(t)
+# y = get_yes_or_no('Simulation Hypothesis')
+# print(y)
+#
+# n = public_discussions.get(where={'theme': 'Simulation Hypothesis'})
+# t = n['metadatas'][0]['issue']
+#
+# t = public_discussions.query(query_texts='Simulation Hypothesis')
 
 for participant in initial_participants:
     add_knowledge_to_profile(participant, extract_topic)
 
-r = get_latest_conviction('Karl Marx', 'simulation hypothesis')
-t = judge_concivtion('Karl Marx', 'simulation hypothesis')
-v = judge_concivtion('Elon Musk', 'simulation hypothesis')
+
+
 ##ToDo User input für Topic wählen, bis dahin. Sonst irgendwie "weiter" button:
 chosen_topic = "simulation hypothesis"
 loop_counter = 0
-while not all_on_board:
+pros =[]
+contras = []
+while not all_on_board and not all_against:
     loop_counter += 1
     randomizer = []
-    for item in initial_participants:
-        randomizer.append(item)
+    #um nicht die ursprüngliche liste zu überschreiben:
+    if loop_counter == 1:
+        for item in initial_participants:
+            randomizer.append(item)
+        #falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
+        for item in randomizer:
+            if 'yes' in judge_concivtion(item, chosen_topic).lower():
+                pros.append(item)
+            else:
+                contras.append(item)
 
-    listener = random.choice(randomizer)
-    ###nur falss es mehr als 2 personen werden
-    randomizer.remove(listener)
-    speaker = random.choice(randomizer)
-    randomizer.remove(speaker)
+
 
     ##ToDo: lose Strategy: in final prompt
-    speaker_argument = form_argument(speaker, chosen_topic, judge_concivtion(speaker, chosen_topic))
-    start_number= public_discussions.count()+1
-    issue=get_yes_or_no(chosen_topic)
-    public_discussions.add(documents=speaker_argument, ids=str(start_number), metadatas={'theme':chosen_topic, 'issue': get_yes_or_no(chosen_topic)})
-    # ToDO Streamlitoutput:
+    for speaker in pros:
+        start_number = public_discussions.count() + 1
+        #notiz an mich: der letzte parameter könnte auch: judge_concivtion(speaker, chosen_topic) sein - das wurde aber schon bei der einteilung überprüft und würde unnötig token kosten
+        speaker_argument = form_argument(speaker, chosen_topic, 'yes')
+        print(speaker_argument)
+        for listener in contras:
+            new_listener_conviction = argument_vs_conviction(speaker_argument, listener, chosen_topic)
+            print(new_listener_conviction)
+        public_discussions.add(documents=speaker_argument, ids=str(start_number), metadatas={'theme':chosen_topic, 'issue': get_yes_or_no(chosen_topic)})
+
+    for listener in contras:
+        if 'yes' in judge_concivtion(listener, chosen_topic).lower():
+            contras.remove(listener)
+            pros.append(listener)
+        listener_argument = form_argument(listener, chosen_topic, 'no')
+        print(listener_argument)
+        for speaker in pros:
+            new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, chosen_topic)
+        public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                               metadatas={'theme': chosen_topic, 'issue': get_yes_or_no(chosen_topic)})
+
+    for speaker in pros:
+        if 'no' in judge_concivtion(speaker, chosen_topic).lower():
+            pros.index(speaker)
+            contras.append(speaker)
+
     ##in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt auftaucht) {argument}
     new_listener_conviction = argument_vs_conviction(speaker_argument, listener,chosen_topic)
 
-    all_on_board = lets_goooooo(initial_participants, chosen_topic)
-    if loop_counter >4:
+    all_on_board, all_against = lets_goooooo(initial_participants, chosen_topic)
+    if loop_counter >2:
         break
-if loop_counter<5:
+if loop_counter<4:
+    #video_path=''
     print('magic')
+    if all_on_board:
+        os.system("shutdown /s /t 1")
+    if all_against:
+        print('')
+        #os.startfile(video_path)
 else:
     print('no magic')
 
