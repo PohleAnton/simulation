@@ -655,7 +655,7 @@ prompt_p2 = (
     "3. Setting: At the beach. Everybody is relaxed "
     "5. Involved Individuals: "
 )
-
+""" # entfernen
 # Beginn des Programmablaufes
 # Schemas ausfüllen
 fill_profile_schemes_for_participants(initial_participants)
@@ -710,6 +710,7 @@ new_theme = public_discussions.query(query_texts="Ideals")
 further = new_theme['metadatas'][0][0].get('theme')
 content = further = new_theme['documents'][0][0]
 print(content)
+
 ###oder, etwas genauer:
 new_theme = get_best_document('Simulation Hypothesis', 5, True, 0.33)
 themes = ''
@@ -717,7 +718,7 @@ for document in new_theme:
     themes += document
 new_topic = ['leipzig', 'wetten dass']
 togetha = compare_themes(all_topics, new_topic)
-
+""" # entfernen
 
 ##runde 2
 
@@ -735,11 +736,12 @@ def form_argument(participant, topic, prior_content):
     )
     return response
 
-
+""" # entfernen
 response = form_argument('Elon Musk', 'State of Society', content)
 print('fertig')
 res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
 print(res)
+""" # entfernen
 """
 TODO:
 4. Sobald 2 Personen eine Konversation beendet haben, werden die Themen gesucht und entsprechend in die DB geschrieben
@@ -747,7 +749,7 @@ TODO:
 6. zur Generierung der neuen Konversationen sollte das Wissen (inklusive Recherche) mitgegeben werden -> sehr langer Prompt
 8. GPT soll Gesprächspartner anhand der Profile finden udn wieder von vorn (Sprechen, Suchen, Meinung)
 """
-
+""" # entfernen
 ##example use für chroma queries:
 ##nimm an, ein Participant heißt "Elon Musk", das topic ist "Techno" , das research_result ist "Techno ist geil")
 write_knowledge_collection("Elon Musk", "techno", "techno ist geil")
@@ -770,3 +772,4 @@ print(result['documents'][0])
 ### der participant erweitert also sein wissen - dieses wissen könnte in einen prompt gegeben werden.
 ### ich werde versuchen, das mit der convictions collection ähnlich zu machen - aber da braucht es noch einen kniff für die
 ###überzeugung
+""" # entfernen
