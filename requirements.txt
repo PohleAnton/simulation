@@ -15,3 +15,5 @@ nltk~=3.8.1
 requests~=2.31.0
 Twisted~=22.10.0
 pydantic~=2.5.2
+tweepy~=4.14.0
+python-dotenv~=1.0.0
