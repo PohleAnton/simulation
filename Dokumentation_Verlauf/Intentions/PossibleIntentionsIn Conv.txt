@@ -1,3 +1,17 @@
+/*
+Die Datei listet spezifische Kommunikationsziele auf, die in verschiedenen Arten von
+Gesprächen oder Diskussionen verfolgt werden können. Diese Ziele umfassen das
+Informieren (Übermittlung von Fakten und Daten), Überzeugen (jemanden von einer
+Idee überzeugen), Unterhalten (Gespräche zur Unterhaltung führen), Lernen (neue
+Informationen erfragen), Unterstützen (Empathie und Unterstützung zeigen), Konflikt
+lösen, Entscheidungen treffen, Netzwerken, Planen, Inspiration und Kreativität fördern,
+Feedback geben oder erhalten, Beziehungen aufbauen oder stärken, Emotionen
+ausdrücken, Probleme lösen sowie Überprüfen oder Klären. Diese
+Kommunikationsziele sind grundlegend für viele soziale und berufliche Interaktionen
+und bieten eine nützliche Struktur, um die verschiedenen Aspekte und Funktionen der
+Kommunikation zu verstehen und zu analysieren.
+*/
+
 Informieren: Das Ziel, Fakten, Daten oder spezifische Informationen zu übermitteln.
 
 Überzeugen: Versuchen, jemanden von einer bestimmten Meinung, Idee oder Vorgehensweise zu überzeugen.
