@@ -1,18 +1,21 @@
+from random import random
+
 import openai
 import yaml
 import os
 import json
 
-from Dokumentation_Verlauf.FocusedConversationApproach import both
+from Dokumentation_Verlauf.FocusedConversationApproach.GeneratePersonsMethods import both
 
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
 openai.api_key = cfg.get('openai')
 os.environ['OPENAI_API_KEY'] = cfg.get('openai')
 
-#Pfade zu den Ordnern aus welchen die Personenprofile und die Moods stammen
-person_profile_path= "Dokumentation_Verlauf/PersonProfiles"
-mood_and_conversation_dynamic_path = "Dokumentation_Verlauf/MoodAndConversationDynamics"
+# Pfade zu den Ordnern aus welchen die Personenprofile und die Moods stammen
+person_profile_path = "PersonProfiles"
+mood_and_conversation_dynamic_path = "MoodAndConversationDynamics"
+
 
 def get_random_file_content(directory):
     # Stellt sicher, dass das Verzeichnis existiert und Textdateien enthält
@@ -51,12 +54,9 @@ def create_conversation_prompt(person_profile_path, mood_and_conversation_dynami
     return prompt
 
 
-
 # Erstelle den Prompt
 generated_prompt = create_conversation_prompt(person_profile_path, mood_and_conversation_dynamic_path)
 print(generated_prompt)
-
-
 
 functions = [
     {
@@ -162,7 +162,7 @@ def wikiresult_from_function_call(result):
     directory = './FocusedConversationApproach/txtFiles/ConversationChunks'
     if not os.path.exists(directory):
         os.makedirs(directory)
-    target_dir = 'Dokumentation_Verlauf/FocusedConversationApproach/txtFiles/ConversationChunks/used/'
+    target_dir = 'FocusedConversationApproach/txtFiles/ConversationChunks/used/'
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
 
@@ -185,6 +185,7 @@ def wikiresult_from_function_call(result):
             file.write(content)
 
     return wikipedia
+
 
 """example use"""
 wiki = wikiresult_from_function_call(result)
