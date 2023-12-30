@@ -367,21 +367,39 @@ def extract_timestamp(s):
 
 
 def get_latest_conviction_id(participant, topic):
+    print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
     collection_name = participant.replace(' ', '') + 'Conviction'
-    collection = globals()[collection_name].get(where={'theme': topic})
-    if collection['ids'][0]:
-        ids = collection['ids']
-        latest = max(ids, key=extract_timestamp)
-        return latest
+    collection = None
+    for collection_db in chroma.list_collections():
+        if collection_db.name == collection_name:
+            try:
+                collection = collection_db.get(where={'theme': topic})
+            except KeyError:
+                print(f"KeyError beim Zugriff auf die Collection")
+            break
+    try:
+        if collection['ids'][0]:
+            ids = collection['ids']
+            latest = max(ids, key=extract_timestamp)
+            return latest
+    except KeyError:
+        print(f"KeyError beim Zugriff auf die Collection")
+        return None
 
 
 def get_latest_conviction(participant, topic):
     collection_name = participant.replace(' ', '') + 'Conviction'
     try:
         id = get_latest_conviction_id(participant, topic)
-        last_conviction = globals()[collection_name].get(ids=[id])
-        return last_conviction['documents'][0]
+        if id:
+            last_conviction = globals()[collection_name].get(ids=[id])
+            return last_conviction['documents'][0]
+        else:
+            return ''
     except IndexError:
+        return ''
+    except KeyError:
+        print(f"KeyError aufgetaucht bei: {collection_name}")
         return ''
 
 
@@ -406,6 +424,7 @@ def write_conviction_collection(participant, topic, arguments=''):
     found_collection = False
     for collection in chroma.list_collections():
         if collection.name == collection_name:
+            print("Collection wurde gefunden")
             found_collection = True
             conv = get_latest_conviction(participant, topic)
             if conv != '':
@@ -453,10 +472,15 @@ def write_conviction_collection(participant, topic, arguments=''):
                 result = res["choices"][0]["message"]["function_call"]["arguments"]
                 res_json = json.loads(result)
                 final = res_json['conviction']
-                globals()[collection_name].add(documents=final,
+                print("Hier sind wa schon ma")
+                try:
+                    globals()[collection_name].add(documents=final,
                                                metadatas={'theme': topic}, ids=topic + timestamp_string)
+                except KeyError:
+                    print(f"KeyError beim Aufruf der Collection {collection_name}")
 
     if not found_collection:
+        print("Keine Collection gefunden")
         res = openai.ChatCompletion.create(
             model=model,
             messages=[
@@ -548,6 +572,7 @@ def extract_topics_of_conversation(given_conversation):
         new_data = json.dumps(data)
 
     if not first_finished:
+        print(new_data)
         for theme in new_data["themes"]:
             conversation_topics.append(theme['theme'])
             all_topics.append(theme['theme'])
@@ -568,6 +593,7 @@ def extract_topics_of_conversation(given_conversation):
         for theme in new_data["themes"]:
             proto_topics.append(theme["theme"])
         new_topics = compare_themes(all_topics, proto_topics)
+        print(data)
         for index, theme in enumerate(data["themes"]):
             if index < len(new_topics):
                 theme["theme"] = new_topics[index]
@@ -735,6 +761,71 @@ def lets_goooooo(participants,chosen_topic):
 
     return all_on_board, all_against
 
+
+def next_conversation(given_chosen_topic=""):
+    loop_counter = 0
+    pros = []
+    contras = []
+    while not all_on_board and not all_against:
+        loop_counter += 1
+        randomizer = []
+        # um nicht die ursprüngliche liste zu überschreiben:
+        if loop_counter == 1:
+            for item in participants_list:
+                randomizer.append(item)
+            # falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
+            for item in randomizer:
+                if 'yes' in judge_concivtion(item, given_chosen_topic).lower():
+                    pros.append(item)
+                else:
+                    contras.append(item)
+
+        for speaker in pros:
+            start_number = public_discussions.count() + 1
+            speaker_argument = form_argument(speaker, given_chosen_topic, 'yes')
+            print(speaker_argument)
+            for listener in contras:
+                new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+                print(new_listener_conviction)
+            public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+
+        for listener in contras:
+            if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
+                contras.remove(listener)
+                pros.append(listener)
+            listener_argument = form_argument(listener, given_chosen_topic, 'no')
+            print(listener_argument)
+            for speaker in pros:
+                new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
+            public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+
+        for speaker in pros:
+            if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
+                pros.index(speaker)
+                contras.append(speaker)
+
+        # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
+        # auftaucht) {argument}
+        new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+
+        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
+        if loop_counter > 2:
+            break
+
+    if loop_counter < 4:
+        # video_path=''
+        print('magic')
+        if all_on_board:
+            x = 0  # os.system("shutdown /s /t 1")
+        if all_against:
+            print('')
+            # os.startfile(video_path)
+    else:
+        print('no magic')
+
+
 participants_list = []
 
 with st.sidebar:
@@ -747,11 +838,17 @@ with st.sidebar:
 
 st.title("💬 ConversationsBot")
 st.caption("🚀 A streamlit bot powered by OpenAI LLM")
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "assistant", "content": f"How can I help you?"}]
 
-assistant_mes = st.chat_message("assistant")
-ai_mes = st.chat_message("ai")
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = "gpt-3.5-turbo"
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
 all_on_board = False
 profile_scheme = read_from_file('./FocusedConversationApproach/txtFiles/scheme.txt')
 
@@ -765,99 +862,46 @@ prompt = (
     "5. Involved Individuals: "
 )
 
-if st.button("Start Conversation", type="primary", key="start_con_button"):
+
+def start_first_conversation():
     fill_profile_schemes_for_participants(participants_list)
     prompt_for_first_conversation = prompt + join_profiles(participants_list)
     first_conversation_res = get_gpt_response(prompt_for_first_conversation)
     first_conversation_str = get_response_content(first_conversation_res)
 
-    assistant_mes.write(participant_prompt)
-    ai_mes.write(first_conversation_str)
-
     extracted_topics = extract_topics_of_conversation(first_conversation_res)
     for participant in participants_list:
         add_knowledge_to_profile(participant, extracted_topics)
 
-    if st.button("Continue Conversation", type="primary", key="continue_con_button"):
-        for participant in participants_list:
-            new_theme = public_discussions.query(query_texts="Ideals")
-            further = new_theme['metadatas'][0][0].get('theme')
-            content = further = new_theme['documents'][0][0]
-            response = form_argument('Elon Musk', 'State of Society', content)
-            res = json.loads(response["choices"][0]["message"]["function_call"]["arguments"])
+    return first_conversation_str
 
-            assistant_mes.write(f"{participant} formulated an argument")
-            ai_mes.write(res)
-            # TODO: Conversation weiterführen, Knowledge speichern, Conversation auswerten
 
-    if st.button("Random topic input for conversation", type="secondary", key="random_topic_input_button"):
-        assistant_mes.write("What do you like to see the participants talking about in the next conversation?"
-                            "Just enter the Topic!")
-        chosen_topic = st.chat_input
-        loop_counter = 0
-        pros = []
-        contras = []
-        while not all_on_board and not all_against:
-            loop_counter += 1
-            randomizer = []
-            # um nicht die ursprüngliche liste zu überschreiben:
-            if loop_counter == 1:
-                for item in participants_list:
-                    randomizer.append(item)
-                # falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
-                for item in randomizer:
-                    if 'yes' in judge_concivtion(item, chosen_topic).lower():
-                        pros.append(item)
-                    else:
-                        contras.append(item)
+counter = 0
+with st.chat_message("assistant"):
+    st.markdown(f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
+                f"Enter a Topic, if you want to continue with the next conversation! "
+                f"And enter \"End\", if you want to quit.")
 
-            for speaker in pros:
-                start_number = public_discussions.count() + 1
-                speaker_argument = form_argument(speaker, chosen_topic, 'yes')
-                print(speaker_argument)
-                for listener in contras:
-                    new_listener_conviction = argument_vs_conviction(speaker_argument, listener, chosen_topic)
-                    print(new_listener_conviction)
-                public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                           metadatas={'theme': chosen_topic, 'issue': get_yes_or_no(chosen_topic)})
-
-            for listener in contras:
-                if 'yes' in judge_concivtion(listener, chosen_topic).lower():
-                    contras.remove(listener)
-                    pros.append(listener)
-                listener_argument = form_argument(listener, chosen_topic, 'no')
-                print(listener_argument)
-                for speaker in pros:
-                    new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, chosen_topic)
-                public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                           metadatas={'theme': chosen_topic, 'issue': get_yes_or_no(chosen_topic)})
-
-            for speaker in pros:
-                if 'no' in judge_concivtion(speaker, chosen_topic).lower():
-                    pros.index(speaker)
-                    contras.append(speaker)
-
-            # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
-            # auftaucht) {argument}
-            new_listener_conviction = argument_vs_conviction(speaker_argument, listener, chosen_topic)
-
-            all_on_board, all_against = lets_goooooo(participants_list, chosen_topic)
-            if loop_counter > 2:
-                break
-
-        if loop_counter < 4:
-            # video_path=''
-            print('magic')
-            if all_on_board:
-                x = 0  # os.system("shutdown /s /t 1")
-            if all_against:
-                print('')
-                # os.startfile(video_path)
-        else:
-            print('no magic')
+if user_input_prompt := st.chat_input("Enter here..."):
+    st.session_state.messages.append({"role": "user", "content": user_input_prompt})
+    with st.chat_message("user"):
+        st.markdown(user_input_prompt)
+    if user_input_prompt == "Start" or user_input_prompt == "start":
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            first_conv_str = start_first_conversation()
+            full_response += first_conv_str
+            message_placeholder.markdown(full_response)
+    if user_input_prompt == "End" or user_input_prompt == "end":
+        st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
+    else:
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            first_conv_str = start_first_conversation()
+            full_response += first_conv_str
+            message_placeholder.markdown(full_response)
+        next_conversation(user_input_prompt)
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
-
-
-
-
