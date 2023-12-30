@@ -1,0 +1,9 @@
+iName:
+Profession:
+Myers-Briggs Type:
+Alcohol / Drugs:
+Interests:
+Personality Traits:
+Religion:
+Origin of the Universe:
+Metaphysics:

@@ -1,0 +1,28 @@
+version: '3.9'
+
+networks:
+  net:
+    driver: bridge
+
+services:
+  server:
+    image: ghcr.io/chroma-core/chroma:latest
+    volumes:
+      - chroma-data:/chroma/chroma/
+    ports:
+      - "8000:8000"
+    networks:
+      - net
+
+  biggerchatbot:
+    build: .
+    ports:
+      - "8501:8501"
+    depends_on:
+      - server
+    networks:
+      - net
+
+volumes:
+  chroma-data:
+    driver: local

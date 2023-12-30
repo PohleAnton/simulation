@@ -8,7 +8,8 @@ import yaml
 from pathlib import Path
 import random
 from chromadb.utils import embedding_functions
-
+import time
+import requests
 
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 model = "gpt-3.5-turbo-1106"
@@ -17,9 +18,8 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-
-#chroma = chromadb.Client()
-chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+#chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 def collection_exists(chroma_client, collection_name):
     try:
@@ -27,12 +27,14 @@ def collection_exists(chroma_client, collection_name):
         return True
     except Exception:
         return False
-public_discussions=None
+
+
+public_discussions = None
 if not collection_exists(chroma, "public_discussions"):
     public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
 else:
     public_discussions = chroma.get_collection(name='public_discussions')
-participant_collection=None
+participant_collection = None
 if not collection_exists(chroma, "participants"):
     participant_collection = chroma.create_collection(name="participants")
 else:
@@ -44,28 +46,6 @@ all_topics = []
 wiki_results = {}
 all_on_board = False
 all_against = False
-
-token_saver = ({
-    "conversation": "Roger: (approaching Elon at the New Year's Eve party) Well, well, well, if it isn't the man who believes he's going to colonize Mars before I figure out the true nature of the universe.\n\nElon: (smirking) Always a pleasure to see you, Roger. I see you're still trying to crack the code of consciousness and the cosmos. Good luck with that.\n\nRoger: (rolling his eyes) Oh please, don't act like your endeavors in space exploration and artificial intelligence are any less ambitious or quixotic. You may get to Mars, but I will unravel the mysteries of the universe before you even set foot on the red planet.\n\nElon: (leaning in, a glint of determination in his eye) You may be a genius in mathematical physics, but I'm the one making history with SpaceX and Tesla. My innovations will change the world as we know it.\n\nRoger: (chuckling) Change the world? I'm more interested in understanding the very fabric of reality itself. Have you ever considered the possibility that we could be living in a simulation?\n\nElon: (frowning) Ah, the old simulation hypothesis. It's an intriguing idea, but I prefer to focus on tangible, practical advancements. Who cares if we're living in a simulation if we can't even make sustainable energy a reality?\n\nRoger: (leaning back, taking a sip of his drink) Ah, there it is - your obsession with practicality and material progress. But what about the deeper questions, Elon? What about the nature of our consciousness and its connection to the universe?\n\nElon: (leaning in, his voice low and intense) Consciousness is just a byproduct of our neural networks. It's all about the algorithms and code. Once we crack the code, we can enhance and even manipulate consciousness itself. It's all about the tech, Roger.\n\nRoger: (shaking his head, a hint of frustration creeping into his voice) You can't reduce consciousness to mere algorithms and code, Elon. There's something deeper at play here, something that transcends the physical world. We need to look beyond the material and embrace the mysteries of the cosmos.\n\nElon: (raising an eyebrow) Mysteries of the cosmos, you say? Well, while you're off pondering the mysteries, I'll be out there in the real world, making things happen. Let's agree to disagree, shall we?\n\nRoger: (sighing) Fine, Elon. But just remember, while you're focused on Mars and AI, I'll be here, pushing the boundaries of human understanding. Here's to another year of our intellectual sparring, old friend.\n\nElon: (smirking) Cheers to that, Roger. Let's see who comes out on top in the end.",
-    "themes": [
-        {
-            "theme": "Space Exploration",
-            "content": "Roger: (approaching Elon at the New Year's Eve party) Well, well, well, if it isn't the man who believes he's going to colonize Mars before I figure out the true nature of the universe. Elon: (leaning in, a glint of determination in his eye) You may be a genius in mathematical physics, but I'm the one making history with SpaceX and Tesla. My innovations will change the world as we know it."
-        },
-        {
-            "theme": "Consciousness and Reality",
-            "content": "Elon: I see you're still trying to crack the code of consciousness and the cosmos. Good luck with that. Roger: What about the nature of our consciousness and its connection to the universe? Elon: Consciousness is just a byproduct of our neural networks. It's all about the algorithms and code. Once we crack the code, we can enhance and even manipulate consciousness itself. It's all about the tech, Roger. Roger: You can't reduce consciousness to mere algorithms and code, Elon. There's something deeper at play here, something that transcends the physical world. We need to look beyond the material and embrace the mysteries of the cosmos."
-        },
-        {
-            "theme": "Artificial Intelligence",
-            "content": "Roger: Oh please, don't act like your endeavors in space exploration and artificial intelligence are any less ambitious or quixotic. Elon: Consciousness is just a byproduct of our neural networks. It's all about the algorithms and code. Once we crack the code, we can enhance and even manipulate consciousness itself."
-        },
-        {
-            "theme": "Simulation Hypothesis",
-            "content": "Roger: Have you ever considered the possibility that we could be living in a simulation? Elon: Ah, the old simulation hypothesis. It's an intriguing idea, but I prefer to focus on tangible, practical advancements. Who cares if we're living in a simulation if we can't even make sustainable energy a reality?"
-        }
-    ]
-})
 
 criteria_prompt = ("Assume 2 people are having an intense intellectual conversation about a controversial topic. "
                    "Both of them start out with a strong conviction. Both are capable of changing their mind gradually. "
@@ -154,7 +134,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "First person perspective of the participant, Inner most believe of a participant about a subject. Radical, emotional and subjective"
+                    "description": "Use first-person pronouns only, Inner most believe of a participant about a subject. Radical, emotional and subjective. Do not mention the name of the participant"
                 }
             }
         }
@@ -167,7 +147,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "First person perspective of the participant. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle."
+                    "description": "Use first-person pronouns only,. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle. Do not mention the name of the participant"
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
@@ -183,12 +163,12 @@ functions = [
                     "type": "string",
                     "description": "An argument someone might make to convince somebody of the truth or importance of the subject"
                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
-                                }
+                }
             },
             "required": ["strategy", "conviction", "prior discussion", "topic"]
         }
     },
-{
+    {
         "name": "form_counterargument",
         "description": "A function that generates a convincing argument about the falsehood of an idea or topic based on conviction and a strategy. Should be as convincing as possible.  ",
         "parameters": {
@@ -197,8 +177,8 @@ functions = [
                 "argument": {
                     "type": "string",
                     "description": "An argument someone might make to convince somebody of the a certain idea is false."
-                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
-                                }
+                                   "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
+                }
             },
             "required": ["strategy", "conviction", "prior discussion", "topic"]
         }
@@ -207,7 +187,7 @@ functions = [
 
 
 def get_convincing_factors():
-    dir_name = 'stepBackStuff/txtFiles/ConvincingFactors'
+    dir_name = './FilesForDocker'
     file_name = 'ConvincingFactors.txt'
     current_dir = Path(__file__).parent
     dir_path = current_dir / dir_name
@@ -245,7 +225,7 @@ def get_convincing_factors():
 
 
 def get_stratey():
-    dir_name = 'stepBackStuff/txtFiles/ConvincingStrategies'
+    dir_name = './FilesForDocker'
     file_name = 'Strategies.txt'
     current_dir = Path(__file__).parent
     dir_path = current_dir / dir_name
@@ -367,7 +347,7 @@ def extract_timestamp(s):
 
 
 def get_latest_conviction_id(participant, topic):
-    #print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
+    # print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
     collection_name = participant.replace(' ', '') + 'Conviction'
     collection = None
     for collection_db in chroma.list_collections():
@@ -392,7 +372,7 @@ def get_latest_conviction(participant, topic):
     try:
         id = get_latest_conviction_id(participant, topic)
         if id:
-            last_conviction = globals()[collection_name].get(ids=[id])
+            last_conviction = st.session_state['collections'][collection_name].get(ids=[id])
             return last_conviction['documents'][0]
         else:
             return ''
@@ -417,13 +397,15 @@ def get_structured_conversation_with_gpt(given_conversation):
 
 
 def write_conviction_collection(participant, topic, arguments=''):
-    #ToDo: Note to self: mit update_conviction zusammenfassen?
+    # ToDo: Note to self: mit update_conviction zusammenfassen?
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     found_collection = False
+    print('test found_collection')
+    print(found_collection)
     for collection in chroma.list_collections():
         if collection.name == collection_name:
-            print("Collection wurde gefunden")
+            print("Collection wurde gefunden" + collection_name)
             found_collection = True
             conv = get_latest_conviction(participant, topic)
             if conv != '':
@@ -439,9 +421,9 @@ def write_conviction_collection(participant, topic, arguments=''):
                     )
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
-                    final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
-                                                   ids=topic + timestamp_string)
+                    final = make_first_person(res_json['conviction'])
+                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
+                                                                         ids=topic + timestamp_string)
                 # falls irgendwie keine überzeugung gegeben
                 else:
                     res = openai.ChatCompletion.create(
@@ -455,9 +437,9 @@ def write_conviction_collection(participant, topic, arguments=''):
                     )
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
-                    final = res_json['conviction']
-                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
-                                                   ids=topic + timestamp_string)
+                    final = make_first_person(res_json['conviction'])
+                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
+                                                                         ids=topic + timestamp_string)
             else:
                 res = openai.ChatCompletion.create(
                     model=model,
@@ -470,11 +452,12 @@ def write_conviction_collection(participant, topic, arguments=''):
                 )
                 result = res["choices"][0]["message"]["function_call"]["arguments"]
                 res_json = json.loads(result)
-                final = res_json['conviction']
+                final = make_first_person(res_json['conviction'])
                 print("Hier sind wa schon ma")
                 try:
-                    globals()[collection_name].add(documents=final,
-                                               metadatas={'theme': topic}, ids=topic + timestamp_string)
+                    st.session_state['collections'][collection_name].add(documents=final,
+                                                                         metadatas={'theme': topic},
+                                                                         ids=topic + timestamp_string)
                 except KeyError:
                     print(f"KeyError beim Aufruf der Collection {collection_name}")
 
@@ -498,8 +481,27 @@ def write_conviction_collection(participant, topic, arguments=''):
             st.session_state['collections'][collection_name] = chroma.create_collection(collection_name)
         st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
                                                              ids=topic + timestamp_string)
-        #globals()[collection_name] = chroma.create_collection(collection_name)
-        #globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+
+
+def safety_conviction(participant, topic):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    res = openai.ChatCompletion.create(
+        model='gpt-4',
+        messages=[
+            {"role": "user",
+             "content": f"create_conviction for {participant} subject {topic}."}
+        ],
+        functions=functions,
+        function_call={'name': 'create_conviction'}
+    )
+    result = res["choices"][0]["message"]["function_call"]["arguments"]
+    res_json = json.loads(result)
+    final = res_json['conviction']
+    st.session_state['collections'].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+    # maybe this:
+    # chroma.get_collection(collection_name)
+    # globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
 def find_core_issues(topic):
@@ -531,7 +533,7 @@ def extract_topics_of_conversation(given_conversation):
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
-    #zum token sparen wird mitunter direkt string übergeben:
+    # zum token sparen wird mitunter direkt string übergeben:
     if isinstance(given_conversation, str):
         text = given_conversation
         vector_test = openai.ChatCompletion.create(
@@ -548,7 +550,7 @@ def extract_topics_of_conversation(given_conversation):
         except json.decoder.JSONDecodeError:
             structured_data = json.dumps(content)
         given_topics = ', '.join(structured_data['themes'])
-        #given_topics = ','.join(theme['theme'] for theme in structured_data['themes'])
+        # given_topics = ','.join(theme['theme'] for theme in structured_data['themes'])
     else:
         text = get_response_content(given_conversation)
         topics = get_structured_conversation_with_gpt(given_conversation)
@@ -607,6 +609,7 @@ def extract_topics_of_conversation(given_conversation):
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
 
         return conversation_topics
+
 
 def add_knowledge_to_profile(participant, given_topics):
     global wiki_results
@@ -671,14 +674,14 @@ def get_prior_discussion(topic):
 
 def form_argument(speaker, chosen_topic, believe):
     strategy = get_stratey()
-    speaker_conviction=get_latest_conviction(speaker, chosen_topic)
-    prior_discussions=get_prior_discussion(chosen_topic)
+    speaker_conviction = get_latest_conviction(speaker, chosen_topic)
+    prior_discussions = get_prior_discussion(chosen_topic)
     if 'yes' in believe.lower():
         speaker_argument = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {"role": "user",
-                "content": f"form_argument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
+                 "content": f"form_argument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_argument'}
@@ -711,7 +714,8 @@ def judge_concivtion(participant, topic):
     judge = openai.ChatCompletion.create(
         model=model,
         messages=[
-            {"role": "system", "content": "you are a binary judge that answers questions only with yes or no. You only say yes when you are REALLY convinced"},
+            {"role": "system",
+             "content": "you are a binary judge that answers questions only with yes or no. You only say yes when you are REALLY convinced"},
             {"role": "user",
              "content": f"Based on this conviction: {conv}, how would you answer {issue}?"}
         ],
@@ -719,11 +723,27 @@ def judge_concivtion(participant, topic):
     response = judge['choices'][0]['message']['content']
     return response
 
+
+def score_conviction(participant, topic):
+    iss = public_discussions.get(where={'theme': topic})
+    issue = iss['metadatas'][0]['issue']
+    conv = get_latest_conviction(participant, topic)
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You only answer with a number"},
+            {"role": "user",
+             "content": f"Based on {conv}, answer {issue} and rate it on a scale from 1 - 100, 1 meaning not convinced at all, 100 being totally convinced"}
+        ]
+    )
+    return judge['choices'][0]['message']['content']
+
+
 def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    globals()[collection_name].add(documents=new_conviction, metadatas={'theme': topic},
-                                   ids=topic + timestamp_string)
+    st.session_state['collections'][collection_name].add(documents=new_conviction, metadatas={'theme': topic},
+                                                         ids=topic + timestamp_string)
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
@@ -742,13 +762,14 @@ def argument_vs_conviction(argument, listener, chosen_topic):
     update_conviction(listener, chosen_topic, ans)
     return ans
 
-def lets_goooooo(participants,chosen_topic):
+
+def lets_goooooo(participants, chosen_topic):
     global all_on_board
     global all_against
     all_against = True
     all_on_board = True
     for participant in participants:
-        res = judge_concivtion(participant,chosen_topic)
+        res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
             all_on_board = False
@@ -757,6 +778,33 @@ def lets_goooooo(participants,chosen_topic):
             all_against = False
 
     return all_on_board, all_against
+
+
+# selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
+def make_first_person(conviction):
+    # Sidenote: There was a suprising amount of step back prompting involved to get this.
+    # consider this: https://chat.openai.com/share/7483b007-f019-45bd-9365-65e06f69d478
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": "you are a binary judge that answers questions only with yes or no."},
+            {"role": "user",
+             "content": f"Does the text only use first-person pronouns (e.g., I, my, me) to express the perspective and beliefs, without any references to other individuals or third-person statements: {conviction}?"}
+        ],
+    )
+    response = judge['choices'][0]['message']['content']
+    if 'no' in response or 'No' in response:
+        rewrite = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user",
+                 "content": f"rewrite this text using first-person pronouns only: {conviction}"
+                 }
+            ]
+        )
+        conviction = rewrite['choices'][0]['message']['content']
+    return conviction
 
 
 def next_conversation(given_chosen_topic=""):
@@ -808,8 +856,6 @@ def next_conversation(given_chosen_topic=""):
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
         all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
-        if loop_counter > 2:
-            break
 
     if loop_counter < 4:
         # video_path=''
@@ -847,16 +893,17 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 all_on_board = False
-profile_scheme = read_from_file('./FocusedConversationApproach/txtFiles/scheme.txt')
+profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
 
 prompt = (
     "Write a conversation with the following setup: "
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
     "2. Long and detailed conversation. "
-    "3. Setting: At the beach. Everybody is relaxed "
-    "4. Topic: The Simulation Hypothesis and its implications"
-    "5. Involved Individuals: "
+    "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
+    "4. Setting: At the beach. Everybody is relaxed "
+    "5. Topic: The Simulation Hypothesis and its implications"
+    "6. Involved Individuals: "
 )
 
 
@@ -872,6 +919,12 @@ def start_first_conversation():
 
     return first_conversation_str
 
+
+# falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
+# while all_on_board or all_against:
+#     for participant in initial_participants:
+#         safety_conviction(participant, token_saver_topics)
+#         all_on_board , all_against = lets_goooooo(initial_participants, token_saver_topics)
 
 counter = 0
 with st.chat_message("assistant"):

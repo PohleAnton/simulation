@@ -452,7 +452,8 @@ def write_conviction_collection(participant, topic, arguments=''):
         globals()[collection_name] = chroma.create_collection(collection_name)
         globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
-def safety_conviction(participant, topic, arguments=''):
+
+def safety_conviction(participant, topic):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     res = openai.ChatCompletion.create(
@@ -560,7 +561,7 @@ def extract_topics_of_conversation(given_conversation):
         for theme in new_data["themes"]:
             proto_topics.append(theme["theme"])
         new_topics = compare_themes(all_topics, proto_topics)
-        for index, theme in enumerate(data["themes"]):
+        for index, theme in enumerate(new_data["themes"]):
             if index < len(new_topics):
                 theme["theme"] = new_topics[index]
         for theme in new_data["themes"]:
@@ -687,10 +688,24 @@ def judge_concivtion(participant, topic):
     response = judge['choices'][0]['message']['content']
     return response
 
+#um etwas nuancierter mit dem überzeugen umgehen zu können
+def score_conviction(participant, topic):
+    iss = public_discussions.get(where={'theme': topic})
+    issue = iss['metadatas'][0]['issue']
+    conv = get_latest_conviction(participant, topic)
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You only answer with a number"},
+            {"role": "user", "content": f"Based on {conv}, answer {issue} and rate it on a scale from 1 - 100, 1 meaning not convinced at all, 100 being totally convinced"}
+        ]
+    )
+    return judge['choices'][0]['message']['content']
+
+
 def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(collection_name + topic +topic + timestamp_string )
     globals()[collection_name].add(documents=new_conviction, metadatas={'theme': topic},
                                    ids=topic + timestamp_string)
 
@@ -707,7 +722,7 @@ def argument_vs_conviction(argument, listener, chosen_topic):
              "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
         ]
     )
-    ans = judge['choices'][0]['message']['content']
+    ans = make_first_person(judge['choices'][0]['message']['content'])
     update_conviction(listener, chosen_topic, ans)
     return ans
 
@@ -737,7 +752,7 @@ def make_first_person(conviction):
             {"role": "system",
              "content": "you are a binary judge that answers questions only with yes or no."},
             {"role": "user",
-             "content": f"Does the text only use first-person pronouns (e.g., I, my, me) to express the perspective and beliefs, without any references to other individuals or third-person statements: {marx}?"}
+             "content": f"Does the text only use first-person pronouns (e.g., I, my, me) to express the perspective and beliefs, without any references to other individuals or third-person statements: {conviction}?"}
         ],
     )
     response = judge['choices'][0]['message']['content']
@@ -820,6 +835,8 @@ print('fertig')
 musk = get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
 marx = get_latest_conviction('Karl Marx', 'Simulation Hypothesis')
 marx_first_p=make_first_person(marx)
+num = score_conviction('Karl Marx', 'Simulation Hypothesis')
+n2=score_conviction('Elon Musk', 'Simulation Hypothesis')
 question = get_yes_or_no(token_saver_topics[0])
 g = judge_concivtion('Karl Marx', 'Simulation Hypothesis')
 h = judge_concivtion('Elon Musk', 'Simulation Hypothesis')
