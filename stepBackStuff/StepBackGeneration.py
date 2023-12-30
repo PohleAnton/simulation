@@ -134,7 +134,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "First person perspective of the participant, Inner most believe of a participant about a subject. Radical, emotional and subjective"
+                    "description": "Use first-person pronouns only, Inner most believe of a participant about a subject. Radical, emotional and subjective. Do not mention the name of the participant"
                 }
             }
         }
@@ -147,7 +147,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "First person perspective of the participant. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle."
+                    "description": "Use first-person pronouns only,. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle. Do not mention the name of the participant"
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
@@ -401,7 +401,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     )
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
-                    final = res_json['conviction']
+                    final = make_first_person(res_json['conviction'])
                     globals()[collection_name].add(documents=final, metadatas={'theme': topic},
                                                    ids=topic + timestamp_string)
                 # falls irgendwie keine überzeugung gegeben
@@ -417,7 +417,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     )
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
-                    final = res_json['conviction']
+                    final = make_first_person(res_json['conviction'])
                     globals()[collection_name].add(documents=final, metadatas={'theme': topic},
                                                    ids=topic + timestamp_string)
             else:
@@ -432,7 +432,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                 )
                 result = res["choices"][0]["message"]["function_call"]["arguments"]
                 res_json = json.loads(result)
-                final = res_json['conviction']
+                final = make_first_person(res_json['conviction'])
                 globals()[collection_name].add(documents=final,
                                                metadatas={'theme': topic}, ids=topic + timestamp_string)
 
@@ -448,9 +448,27 @@ def write_conviction_collection(participant, topic, arguments=''):
         )
         result = res["choices"][0]["message"]["function_call"]["arguments"]
         res_json = json.loads(result)
-        final = res_json['conviction']
+        final = make_first_person(res_json['conviction'])
         globals()[collection_name] = chroma.create_collection(collection_name)
         globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+
+def safety_conviction(participant, topic, arguments=''):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    res = openai.ChatCompletion.create(
+        model='gpt-4',
+        messages=[
+            {"role": "user",
+             "content": f"create_conviction for {participant} subject {topic}."}
+        ],
+        functions=functions,
+        function_call={'name': 'create_conviction'}
+    )
+    result = res["choices"][0]["message"]["function_call"]["arguments"]
+    res_json = json.loads(result)
+    final = res_json['conviction']
+    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+
 
 
 def find_core_issues(topic):
@@ -709,6 +727,33 @@ def lets_goooooo(participants,chosen_topic):
 
     return all_on_board, all_against
 
+#selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
+def make_first_person(conviction):
+    #Sidenote: There was a suprising amount of step back prompting involved to get this.
+    #consider this: https://chat.openai.com/share/7483b007-f019-45bd-9365-65e06f69d478
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": "you are a binary judge that answers questions only with yes or no."},
+            {"role": "user",
+             "content": f"Does the text only use first-person pronouns (e.g., I, my, me) to express the perspective and beliefs, without any references to other individuals or third-person statements: {marx}?"}
+        ],
+    )
+    response = judge['choices'][0]['message']['content']
+    if 'no' in response or 'No' in response:
+        rewrite = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user",
+                 "content": f"rewrite this text using first-person pronouns only: {conviction}"
+                 }
+            ]
+        )
+        conviction = rewrite['choices'][0]['message']['content']
+    return conviction
+
+
 
 
 # GPT und Txt Zeug, Konstanten festlegen
@@ -739,9 +784,10 @@ prompt_p3 = (
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
     "2. Long and detailed conversation. "
-    "3. Setting: At the beach. Everybody is relaxed "
-    "4. Topic: The Simulation Hypothesis and its implications"
-    "5. Involved Individuals: "
+    "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
+    "4. Setting: At the beach. Everybody is relaxed "
+    "5. Topic: The Simulation Hypothesis and its implications"
+    "6. Involved Individuals: "
 )
 
 
@@ -753,23 +799,30 @@ first_conversation = get_gpt_response(prompt_for_first_conversation)
 conversation = first_conversation['choices'][0]['message']['content']
 extract_topic = extract_topics_of_conversation(first_conversation)
 
-# write_conviction_collection('Karl Marx', 'Simulation Hypothesis')
-# r = get_latest_conviction('Karl Marx', 'Simulation Hypothesis')
-# print(r)
-# t = judge_concivtion('Karl Marx', 'Simulation Hypothesis')
-# print(t)
-# y = get_yes_or_no('Simulation Hypothesis')
-# print(y)
-#
-# n = public_discussions.get(where={'theme': 'Simulation Hypothesis'})
-# t = n['metadatas'][0]['issue']
-#
-# t = public_discussions.query(query_texts='Simulation Hypothesis')
-
-for participant in initial_participants:
-    add_knowledge_to_profile(participant, extract_topic)
 
 
+#das passiert später nachdem der user ein topic gewählt hat!
+token_saver_topics = ['Simulation Hypothesis']
+print(len(token_saver_topics))
+if len(token_saver_topics) != 0:
+    for participant in initial_participants:
+        add_knowledge_to_profile(participant, token_saver_topics)
+else:
+    print('pick topic')
+
+#falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier gpt-4 benutzt werden soll...
+# while all_on_board or all_against:
+#     for participant in initial_participants:
+#         safety_conviction(participant, token_saver_topics)
+#         all_on_board , all_against = lets_goooooo(initial_participants, token_saver_topics)
+
+print('fertig')
+musk = get_latest_conviction('Elon Musk', 'Simulation Hypothesis')
+marx = get_latest_conviction('Karl Marx', 'Simulation Hypothesis')
+marx_first_p=make_first_person(marx)
+question = get_yes_or_no(token_saver_topics[0])
+g = judge_concivtion('Karl Marx', 'Simulation Hypothesis')
+h = judge_concivtion('Elon Musk', 'Simulation Hypothesis')
 
 ##ToDo User input für Topic wählen, bis dahin. Sonst irgendwie "weiter" button:
 chosen_topic = "simulation hypothesis"
@@ -823,8 +876,7 @@ while not all_on_board and not all_against:
     new_listener_conviction = argument_vs_conviction(speaker_argument, listener,chosen_topic)
 
     all_on_board, all_against = lets_goooooo(initial_participants, chosen_topic)
-    if loop_counter >2:
-        break
+
 if loop_counter<4:
     #video_path=''
     print('magic')
