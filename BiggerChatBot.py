@@ -594,7 +594,7 @@ def extract_topics_of_conversation(given_conversation):
             proto_topics.append(theme["theme"])
         new_topics = compare_themes(all_topics, proto_topics)
         print(data)
-        for index, theme in enumerate(data["themes"]):
+        for index, theme in enumerate(new_data["themes"]):
             if index < len(new_topics):
                 theme["theme"] = new_topics[index]
         for theme in new_data["themes"]:
