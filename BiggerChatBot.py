@@ -367,7 +367,7 @@ def extract_timestamp(s):
 
 
 def get_latest_conviction_id(participant, topic):
-    print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
+    #print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
     collection_name = participant.replace(' ', '') + 'Conviction'
     collection = None
     for collection_db in chroma.list_collections():
@@ -409,7 +409,6 @@ def get_structured_conversation_with_gpt(given_conversation):
                                                  functions)
 
     content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
-    print("immernoch vor bug")
     try:
         structured_data = json.loads(content)
     except json.decoder.JSONDecodeError:
@@ -572,7 +571,6 @@ def extract_topics_of_conversation(given_conversation):
         new_data = json.dumps(data)
 
     if not first_finished:
-        print(new_data)
         for theme in new_data["themes"]:
             conversation_topics.append(theme['theme'])
             all_topics.append(theme['theme'])
@@ -593,7 +591,6 @@ def extract_topics_of_conversation(given_conversation):
         for theme in new_data["themes"]:
             proto_topics.append(theme["theme"])
         new_topics = compare_themes(all_topics, proto_topics)
-        print(data)
         for index, theme in enumerate(new_data["themes"]):
             if index < len(new_topics):
                 theme["theme"] = new_topics[index]
@@ -606,6 +603,7 @@ def extract_topics_of_conversation(given_conversation):
             chroma_documents.append(theme['content'])
             chroma_metadatas.append({'theme': theme['theme'], 'issue': find_core_issues(theme['theme'])})
 
+        chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
 
         return conversation_topics
@@ -724,7 +722,6 @@ def judge_concivtion(participant, topic):
 def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(collection_name + topic +topic + timestamp_string )
     globals()[collection_name].add(documents=new_conviction, metadatas={'theme': topic},
                                    ids=topic + timestamp_string)
 
