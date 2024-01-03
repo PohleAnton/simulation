@@ -44,8 +44,11 @@ first_finished = False
 all_topics = []
 # um google request zu sparen:
 wiki_results = {}
-all_on_board = False
-all_against = False
+if 'all_on_board' not in st.session_state:
+    st.session_state['all_on_board'] = False
+
+if 'all_against' not in st.session_state:
+    st.session_state['all_against'] = False
 
 criteria_prompt = ("Assume 2 people are having an intense intellectual conversation about a controversial topic. "
                    "Both of them start out with a strong conviction. Both are capable of changing their mind gradually. "
@@ -764,20 +767,19 @@ def argument_vs_conviction(argument, listener, chosen_topic):
 
 
 def lets_goooooo(participants, chosen_topic):
-    global all_on_board
-    global all_against
-    all_against = True
-    all_on_board = True
+
+    st.session_state['all_against'] = True
+    st.session_state['all_on_board'] = True
     for participant in participants:
         res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
-            all_on_board = False
+            st.session_state['all_on_board'] = False
 
         if 'yes' in res.lower():
-            all_against = False
+            st.session_state['all_against'] = False
 
-    return all_on_board, all_against
+    return st.session_state['all_on_board'], st.session_state['all_against']
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
@@ -811,7 +813,7 @@ def next_conversation(given_chosen_topic=""):
     loop_counter = 0
     pros = []
     contras = []
-    while not all_on_board and not all_against:
+    while not st.session_state['all_on_board'] and not st.session_state['all_against']:
         loop_counter += 1
         randomizer = []
         # um nicht die ursprüngliche liste zu überschreiben:
@@ -855,14 +857,14 @@ def next_conversation(given_chosen_topic=""):
         # auftaucht) {argument}
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
+        st.session_state['all_on_board'],  st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
 
     if loop_counter < 4:
         # video_path=''
         print('magic')
-        if all_on_board:
+        if  st.session_state['all_on_board']:
             x = 0  # os.system("shutdown /s /t 1")
-        if all_against:
+        if st.session_state['all_against']:
             print('')
             # os.startfile(video_path)
     else:
@@ -892,7 +894,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-all_on_board = False
+
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
 
 prompt = (
