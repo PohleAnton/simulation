@@ -779,7 +779,7 @@ def lets_goooooo(participants, chosen_topic):
         if 'yes' in res.lower():
             st.session_state['all_against'] = False
 
-    return all_on_board, all_against
+    return st.session_state['all_on_board'],  st.session_state['all_against']
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
