@@ -213,29 +213,82 @@ functions = [
 
 
 def get_convincing_factors():
-    #consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
-    #step back prompted, file will exist
     dir_name = './FilesForDocker'
     file_name = 'ConvincingFactors.txt'
     current_dir = Path(__file__).parent
     dir_path = current_dir / dir_name
     file_path = dir_path / file_name
-    with open(file_path, 'r') as file:
-        content = file.read()
-        return content
+
+    if not dir_path.exists():
+        dir_path.mkdir(parents=True)
+
+    if file_path.exists():
+        with open(file_path, 'r') as file:
+            content = file.read()
+            return content
+    else:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": criteria_prompt}
+            ]
+        )
+        raw = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": f"extract_headings from {response['choices'][0]['message']['content']}"}
+            ],
+            functions=functions
+        )
+        try:
+            points_json = json.loads(raw)
+        except json.JSONDecodeError:
+            points_json = json.dumps(raw)
+        points = points_json['headings']
+        with open(file_path, 'w') as file:
+            file.write(points)
+        return points
 
 
 def get_stratey():
-    #consider this: https://chat.openai.com/share/05e5d5e0-ffec-4205-8705-8067ae5c8764
-    # step back prompted, file will exist
     dir_name = './FilesForDocker'
     file_name = 'Strategies.txt'
     current_dir = Path(__file__).parent
     dir_path = current_dir / dir_name
     file_path = dir_path / file_name
-    with open(file_path, 'r') as file:
-        content = file.read()
-        bullet_points_list = content.split('\n')
+
+    if not dir_path.exists():
+        dir_path.mkdir(parents=True)
+
+    if file_path.exists():
+        with open(file_path, 'r') as file:
+            content = file.read()
+            bullet_points_list = content.split('\n')
+            random_bullet_points = random.sample(bullet_points_list, 3)
+            random_bullet_points_string = '\n'.join(random_bullet_points)
+            return random_bullet_points_string
+    else:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": strategies_prompt}
+            ]
+        )
+        raw = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": f"extract_headings from {response['choices'][0]['message']['content']}"}
+            ],
+            functions=functions
+        )
+        try:
+            points_json = json.loads(raw)
+        except json.JSONDecodeError:
+            points_json = json.dumps(raw)
+        points = points_json['headings']
+        with open(file_path, 'w') as file:
+            file.write(points)
+        bullet_points_list = points.split('\n')
         random_bullet_points = random.sample(bullet_points_list, 3)
         random_bullet_points_string = '\n'.join(random_bullet_points)
         return random_bullet_points_string
@@ -503,6 +556,8 @@ def find_core_issues(topic):
 
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
+    global first_finished
+    global all_topics
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
@@ -545,26 +600,10 @@ def extract_topics_of_conversation(given_conversation):
     except json.decoder.JSONDecodeError:
         new_data = json.dumps(data)
 
-    if not st.session_state['first_finished']:
+    if not first_finished:
         for theme in new_data["themes"]:
-            #das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
-            #Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
-            #zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
-            #beim entwickeln vermiedern werden
-            for prior_topic in st.session_state['all_topics']:
-                judge = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "system",
-                         "content": "You compare 2 Strings and assess if they refer to the same concept. You only answer yes or no"},
-                        {"role": "user",
-                         "content": f"Does {prior_topic} mean the same thing as {theme['theme']}"}
-                    ],
-                )
-                if 'yes' in judge['choices'][0]['message']['content'].lower():
-                    theme['theme'] = prior_topic
-                    break
             conversation_topics.append(theme['theme'])
+            all_topics.append(theme['theme'])
             chroma_ids.append(start_number)
             start_number += 1
             chroma_documents.append(theme['content'])
@@ -572,15 +611,47 @@ def extract_topics_of_conversation(given_conversation):
 
         chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
-        st.session_state['first_finished'] = True
+        first_finished = True
+
+        return conversation_topics
+
+    if first_finished:
+
+        proto_topics = []
+        for theme in new_data["themes"]:
+            proto_topics.append(theme["theme"])
+        new_topics = compare_themes(all_topics, proto_topics)
+        for index, theme in enumerate(new_data["themes"]):
+            if index < len(new_topics):
+                theme["theme"] = new_topics[index]
+        for theme in new_data["themes"]:
+            conversation_topics.append(theme['theme'])
+            if theme['theme'] not in all_topics:
+                all_topics.append(theme['theme'])
+            chroma_ids.append(start_number)
+            start_number += 1
+            chroma_documents.append(theme['content'])
+            chroma_metadatas.append({'theme': theme['theme'], 'issue': find_core_issues(theme['theme'])})
+
+        chroma_ids = [str(id) for id in chroma_ids]
+        public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
 
         return conversation_topics
 
 
-
-
 def add_knowledge_to_profile(participant, given_topics):
-    #ist ein Überbleibsel aus komplexerem Code,.
+    global wiki_results
+    global all_topics
+    knows = []
+    unknown = []
+    for item in given_topics:
+        unknown.append(item)
+    for topic in given_topics:
+        if topic in wiki_results:
+            unknown.remove(topic)
+            knows.append(topic)
+
+    # ToDO TESTING ONLY - THIS CAN stay here though
     for topic in given_topics:
         write_conviction_collection(participant, topic)
 

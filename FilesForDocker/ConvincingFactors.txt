@@ -1,10 +1,8 @@
 Evidence-Based Arguments,
 Logical Consistency,
-Acknowledging Counterarguments,
-Appeal to Shared Values,
-Emotional Resonance,
-Clarity and Conciseness,
-Open-mindedness and Respect,
-Practical Implications,
-Expert Testimony,
-Socratic Questioning
+Relevance,
+Clarity and Comprehensibility,
+Acknowledgment of Counterarguments,
+Emotional Appeal,
+Personal Credibility,
+Respectful Tone
