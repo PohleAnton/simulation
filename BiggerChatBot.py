@@ -890,29 +890,19 @@ if "openai_model" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
 counter = 0
-instruction_str = (f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
-                   "Enter a Topic, if you want to continue with the next conversation! "
-                   "And enter \"End\", if you want to quit.")
-st.session_state.messages.append({"role": "assistent", "content": instruction_str})
-
-# for message in st.session_state.messages:
-#    st.chat_message(f"{message['role']}: {message['content']}")
-
+with st.chat_message("assistant"):
+    st.markdown(f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
+                f"Enter a Topic, if you want to continue with the next conversation! "
+                f"And enter \"End\", if you want to quit.")
 if user_input_prompt := st.chat_input("Enter here..."):
     st.session_state.messages.append({"role": "user", "content": user_input_prompt})
-
-    if user_input_prompt.lower() in ["start", "end"]:
-        if user_input_prompt == "start":
-            start_conversation()
-        elif user_input_prompt == "end":
-            with st.chat_message("assistant"):
-                st.session_state.messages.append({"role": "assistant",
-                                                  "content": "kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma"})
+    with st.chat_message("user"):
+        st.markdown(user_input_prompt)
+    if user_input_prompt == "Start" or user_input_prompt == "start":
+        start_conversation()
+    elif user_input_prompt == "End" or user_input_prompt == "end":
+        st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
     else:
         next_conversation(user_input_prompt)
 
