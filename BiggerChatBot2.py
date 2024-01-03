@@ -8,6 +8,7 @@ import openai
 import streamlit as st
 import yaml
 from chromadb.utils import embedding_functions
+from sqlalchemy.testing.plugin.plugin_base import logging
 
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 model = "gpt-3.5-turbo-1106"
@@ -16,56 +17,104 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
-#chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+#chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+
+@st.cache
+def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name):
+    dir_name = './FilesForDocker'
+    current_dir = Path(__file__).parent
+    dir_path = current_dir / dir_name
+    file_path = dir_path / file_name
+
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    if file_path.exists():
+        with open(file_path, 'r') as file:
+            return file.read()
+
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = openai.ChatCompletion.create(
+        model=model,
+        messages=[{"role": "user",
+                   "content": f"{extract_function_name} from {response['choices'][0]['message']['content']}"}],
+        functions=functions
+    )
+
+    try:
+        points_json = json.loads(raw)
+    except json.JSONDecodeError:
+        points_json = json.dumps(raw)
+
+    points = points_json['headings']
+    with open(file_path, 'w') as file:
+        file.write(points)
+
+    return points
+
+@st.cache
+def get_or_create_collection(client, collection_name, embedding_function=None):
+    try:
+        return client.get_collection(name=collection_name)
+    except Exception as e:
+        if embedding_function:
+            return client.create_collection(name=collection_name, embedding_function=embedding_function)
+        else:
+            return client.create_collection(name=collection_name)
+
+
+if 'chat_history' not in st.session_state:
+    st.session_state['chat_history'] = []
+
+def append_to_chat(role, content):
+    """ Fügt eine Nachricht dem Chatverlauf hinzu """
+    st.session_state['chat_history'].append({'role': role, 'content': content})
+
+def display_chat():
+    """ Zeigt den gesamten Chatverlauf an """
+    for message in st.session_state['chat_history']:
+        with st.chat_message(message['role']):
+            st.markdown(message['content'])
+
+def handle_user_input(user_input, participants_list):
+    # Füge die Benutzereingabe dem Chatverlauf hinzu
+    append_to_chat("user", user_input)
+
+    if user_input.lower() == "start":
+        start_conversation(participants_list)
+    elif user_input.lower() == "end":
+        end_conversation()
+        return  # Beendet die Interaktion
+    else:
+        next_conversation(user_input, participants_list)
+
+    # Zeigt den aktualisierten Chatverlauf an
+    display_chat()
 
 
 
+public_discussions = get_or_create_collection(chroma, "public_discussions", openai_ef)
+participant_collection = get_or_create_collection(chroma, "participants")
+prior_themes_collection = get_or_create_collection(chroma, "prior_themes_collection")
 
+# Initialisierung von Streamlit-State-Variablen
 if 'first_finished' not in st.session_state:
     st.session_state['first_finished'] = False
 if 'all_topics' not in st.session_state:
     st.session_state['all_topics'] = []
-
-
-
 if 'all_on_board' not in st.session_state:
     st.session_state['all_on_board'] = False
-
 if 'all_against' not in st.session_state:
     st.session_state['all_against'] = False
 
-
-def collection_exists(chroma_client, collection_name):
-    try:
-        chroma_client.get_collection(name=collection_name)
-        return True
-    except Exception:
-        return False
-
-##ToDo: nur einmal einlesen oder bei jedem run?
-public_discussions = None
-if not collection_exists(chroma, "public_discussions"):
-    public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
-else:
-    public_discussions = chroma.get_collection(name='public_discussions')
-
-##ToDo: nur einmal einlesen oder bei jedem run?
-participant_collection = None
-if not collection_exists(chroma, "participants"):
-    participant_collection = chroma.create_collection(name="participants")
-else:
-    participant_collection = chroma.get_collection('participants')
-
-##ToDo: nur einmal einlesen oder bei jedem run?
-prior_themes_collection = None
-if not collection_exists(chroma, "prior_themes_collection"):
-    prior_themes = chroma.create_collection(name="prior_themes_collection")
-else:
-    prior_themes = chroma.get_collection("prior_themes_collection")
-    theme_count = prior_themes.count()
+# Laden von Themen in st.session_state['all_topics']
+if prior_themes_collection:
+    theme_count = prior_themes_collection.count()
     if theme_count > 0:
-        themes = prior_themes.query(query_texts="any", n_results=theme_count)
+        themes = prior_themes_collection.query(query_texts="any", n_results=theme_count)
         if 'metadatas' in themes:
             for item in themes:
                 if isinstance(item, list):
@@ -212,35 +261,6 @@ functions = [
 ]
 
 
-def get_convincing_factors():
-    #consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
-    #step back prompted, file will exist
-    dir_name = './FilesForDocker'
-    file_name = 'ConvincingFactors.txt'
-    current_dir = Path(__file__).parent
-    dir_path = current_dir / dir_name
-    file_path = dir_path / file_name
-    with open(file_path, 'r') as file:
-        content = file.read()
-        return content
-
-
-def get_stratey():
-    #consider this: https://chat.openai.com/share/05e5d5e0-ffec-4205-8705-8067ae5c8764
-    # step back prompted, file will exist
-    dir_name = './FilesForDocker'
-    file_name = 'Strategies.txt'
-    current_dir = Path(__file__).parent
-    dir_path = current_dir / dir_name
-    file_path = dir_path / file_name
-    with open(file_path, 'r') as file:
-        content = file.read()
-        bullet_points_list = content.split('\n')
-        random_bullet_points = random.sample(bullet_points_list, 3)
-        random_bullet_points_string = '\n'.join(random_bullet_points)
-        return random_bullet_points_string
-
-
 def read_from_file(file_path):
     with open(file_path, 'r') as file:
         content = file.read()
@@ -248,14 +268,17 @@ def read_from_file(file_path):
 
 
 def get_gpt_response(content):
-    # print(Research.segregation_str, "Content for Message:", content)
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "user", "content": content}
-        ]
-    )
-    return response
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": content}
+            ]
+        )
+        return response
+    except Exception as e:
+        st.error(f"Fehler beim Abrufen der GPT-Antwort: {e}")
+        return None
 
 
 def get_response_content(given_response):
@@ -304,15 +327,20 @@ def join_profiles(participants):
 
 
 def get_gpt_response_with_function(content, functions):
-    # print(Research.segregation_str, "Content for Message:", content)
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "user", "content": content}
-        ],
-        functions=functions
-    )
-    return response
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": content}
+            ],
+            functions=functions
+        )
+        return response
+    except Exception as e:
+        st.error(f"Fehler beim Abrufen der GPT-Antwort mit Funktionen: {e}")
+        logging.error(f"Fehler beim Abrufen der GPT-Antwort mit Funktionen: {e}")
+        return None
+
 
 
 def extract_timestamp(s):
@@ -371,138 +399,93 @@ def get_structured_conversation_with_gpt(given_conversation):
 
 
 def write_conviction_collection(participant, topic, arguments=''):
-    # ToDo: Note to self: mit update_conviction zusammenfassen?
+    # Konsolidierung der Funktionalität von 'create_conviction' und 'update_conviction'
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    found_collection = False
-    for collection in chroma.list_collections():
-        if collection.name == collection_name:
-            print("Collection wurde gefunden" + collection_name)
-            found_collection = True
-            conv = get_latest_conviction(participant, topic)
-            if conv != '':
-                if arguments != '':
-                    res = openai.ChatCompletion.create(
-                        model=model,
-                        messages=[
-                            {"role": "user",
-                             "content": f"update_conviction: update this conviction: {conv} of {participant} about {topic}. Consider {arguments}"}
-                        ],
-                        functions=functions,
-                        function_call={'name': 'update_conviction'}
-                    )
-                    result = res["choices"][0]["message"]["function_call"]["arguments"]
-                    res_json = json.loads(result)
-                    final = make_first_person(res_json['conviction'])
-                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
-                # falls irgendwie keine überzeugung gegeben
-                else:
-                    res = openai.ChatCompletion.create(
-                        model=model,
-                        messages=[
-                            {"role": "user",
-                             "content": f"create_conviction for {participant} about subject {topic}."}
-                        ],
-                        functions=functions,
-                        function_call={'name': 'create_conviction'}
-                    )
-                    result = res["choices"][0]["message"]["function_call"]["arguments"]
-                    res_json = json.loads(result)
-                    final = make_first_person(res_json['conviction'])
-                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
-            else:
-                res = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "user",
-                         "content": f"create_conviction for {participant} about subject {topic}."}
-                    ],
-                    functions=functions,
-                    function_call={'name': 'create_conviction'}
-                )
-                result = res["choices"][0]["message"]["function_call"]["arguments"]
-                res_json = json.loads(result)
-                final = make_first_person(res_json['conviction'])
-                print("Hier sind wa schon ma")
-                try:
-                    st.session_state['collections'][collection_name].add(documents=final,
-                                                                         metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
-                except KeyError:
-                    print(f"KeyError beim Aufruf der Collection {collection_name}")
 
-    ##ToDo: Dieser Code muss zum Beispiel nur einmal pro Run ausgeführt werden --> st.session_state needed
-    ##ToDo: Daraus folgt auch, dass der Code ab
-    ##    for collection in chroma.list_collections():
-    ##        if collection.name == collection_name:
-    ## etwas weiter oben in der Methode erst ausgeführt wird, nachdem hier ein wert gesetzt wurde
-    if not found_collection:
-        print("Keine Collection gefunden")
+    # Überprüfe, ob die Sammlung existiert und hole die letzte Überzeugung
+    collection = get_or_create_collection(chroma, collection_name)
+    conv = get_latest_conviction(participant, topic)
+
+    if conv == '' or arguments != '':
+        # 'update_conviction' falls Überzeugung existiert und Argumente gegeben sind
+        # oder 'create_conviction' falls keine Überzeugung existiert
+        function_call_name = 'update_conviction' if conv != '' else 'create_conviction'
         res = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"create_conviction for {participant} subject {topic}."}
+                 "content": f"{function_call_name} for {participant} about subject {topic}. {arguments if arguments else ''}"}
+            ],
+            functions=functions,
+            function_call={'name': function_call_name}
+        )
+        result = res["choices"][0]["message"]["function_call"]["arguments"]
+        res_json = json.loads(result)
+        final = make_first_person(res_json['conviction'])
+    else:
+        # Keine Änderung notwendig, da keine Argumente gegeben und Überzeugung bereits vorhanden
+        final = conv
+
+    # Füge die neue oder aktualisierte Überzeugung zur Sammlung hinzu
+    collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+
+
+def safety_conviction(participant, topic):
+    collection_name = participant.replace(' ', '') + 'Conviction'
+    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        res = openai.ChatCompletion.create(
+            model=model,  # Verwende das im Rest des Codes definierte Modell
+            messages=[
+                {"role": "user", "content": f"create_conviction for {participant} subject {topic}."}
             ],
             functions=functions,
             function_call={'name': 'create_conviction'}
         )
         result = res["choices"][0]["message"]["function_call"]["arguments"]
         res_json = json.loads(result)
-        final = res_json['conviction']
-        if 'collections' not in st.session_state:
-            st.session_state['collections'] = {}
-        if collection_name not in st.session_state['collections']:
-            st.session_state['collections'][collection_name] = chroma.create_collection(collection_name)
-        st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
-                                                             ids=topic + timestamp_string)
+        final = make_first_person(res_json['conviction'])  # Sicherstellen, dass es in erster Person ist
 
-
-def safety_conviction(participant, topic):
-    collection_name = participant.replace(' ', '') + 'Conviction'
-    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    res = openai.ChatCompletion.create(
-        model='gpt-4',
-        messages=[
-            {"role": "user",
-             "content": f"create_conviction for {participant} subject {topic}."}
-        ],
-        functions=functions,
-        function_call={'name': 'create_conviction'}
-    )
-    result = res["choices"][0]["message"]["function_call"]["arguments"]
-    res_json = json.loads(result)
-    final = res_json['conviction']
-    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+        # Verwende get_or_create_collection für Konsistenz
+        conviction_collection = get_or_create_collection(chroma, collection_name)
+        conviction_collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+    except (KeyError, json.JSONDecodeError) as e:
+        print(f"Fehler bei der Erstellung der Überzeugung für {participant} zum Thema {topic}: {e}")
     # maybe this:
     # chroma.get_collection(collection_name)
     # globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
+@st.cache
 def find_core_issues(topic):
-    res = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "user",
-             "content": f"extract_core_issue from {topic}"}
-        ],
-        functions=functions,
-        function_call={'name': 'extract_core_issue'}
-    )
-    r = res['choices'][0]['message']['function_call']['arguments']
-
     try:
-        fin = json.loads(r)
-    except json.JSONDecodeError:
-        fin = json.loads(r)
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[{"role": "user", "content": f"extract_core_issue from {topic}"}],
+            functions=functions,
+            function_call={'name': 'extract_core_issue'}
+        )
 
-    final = fin['core_issue']
-    return final
+        arguments_json = response['choices'][0]['message']['function_call']['arguments']
+
+        parsed_arguments = json.loads(arguments_json)
+        core_issue = parsed_arguments.get('core_issue', None)
+
+        if core_issue is None:
+            raise ValueError(f"Kernthema wurde nicht gefunden in der Antwort für das Thema '{topic}'")
+
+        return core_issue
+
+    except (KeyError, json.JSONDecodeError, ValueError) as e:
+        print(f"Fehler bei der Suche nach dem Kernthema für das Thema '{topic}': {e}")
+        return None
+
 
 
 # Sucht sich die Themen der Conversation zusammen
+@st.cache
 def extract_topics_of_conversation(given_conversation):
     conversation_topics = []
     chroma_metadatas = []
@@ -614,6 +597,7 @@ def query_public_discussions(query, results=10, precision=0.4):
     return result
 
 
+@st.cache
 def get_best_document(topic, precise=False, precision=0.4):
     r = public_discussions.query(query_texts=topic)
     if precise:
@@ -626,6 +610,7 @@ def get_best_document(topic, precise=False, precision=0.4):
         return r['documents']
 
 
+@st.cache
 def get_prior_discussion(topic):
     # ToDo: Note to self: Vielleicht kann ich die query public discussions Methoden zusammenschrumpfen. Noch sind sie einzeln. Man weiß ja nie...
     r = get_best_document(topic, True, 0.4)
@@ -634,111 +619,146 @@ def get_prior_discussion(topic):
 
 
 def form_argument(speaker, chosen_topic, believe):
-    strategy = get_stratey()
+    strategy = get_file_content_or_fetch_from_gpt('Strategies.txt', strategies_prompt, "extract_headings")
     speaker_conviction = get_latest_conviction(speaker, chosen_topic)
     prior_discussions = get_prior_discussion(chosen_topic)
-    if 'yes' in believe.lower():
-        speaker_argument = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "user",
-                 "content": f"form_argument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
-            ],
-            functions=functions,
-            function_call={'name': 'form_argument'}
-        )
-        argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
-    else:
-        speaker_argument = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "user",
-                 "content": f"form_counterargument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
-            ],
-            functions=functions,
-            function_call={'name': 'form_counterargument'}
-        )
-        argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
+
+    function_call_name = 'form_argument' if 'yes' in believe.lower() else 'form_counterargument'
+    argument_prompt = f"{function_call_name} using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"
+
+    speaker_argument = openai.ChatCompletion.create(
+        model=model,
+        messages=[{"role": "user", "content": argument_prompt}],
+        functions=functions,
+        function_call={'name': function_call_name}
+    )
 
     try:
+        argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
         arg_json = json.loads(argument_string)
-    except json.JSONDecodeError:
-        arg_json = json.dumps(argument_string)
-    argument = arg_json['argument']
-    return argument
+        return arg_json.get('argument', 'No argument generated.')
+    except (json.JSONDecodeError, KeyError):
+        return "An error occurred while generating the argument."
 
 
 def judge_concivtion(participant, topic):
-    iss = public_discussions.get(where={'theme': topic})
-    issue = iss['metadatas'][0]['issue']
-    conv = get_latest_conviction(participant, topic)
-    judge = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "system",
-             "content": "you are a binary judge that answers questions only with yes or no. You only say yes when you are REALLY convinced"},
-            {"role": "user",
-             "content": f"Based on this conviction: {conv}, how would you answer {issue}?"}
-        ],
-    )
-    response = judge['choices'][0]['message']['content']
-    return response
+    try:
+        iss = public_discussions.get(where={'theme': topic})
+        issue = iss.get('metadatas', [{}])[0].get('issue')
+        if not issue:
+            return f"Issue not found for the topic '{topic}'."
+
+        conv = get_latest_conviction(participant, topic)
+        if not conv:
+            return f"No conviction found for {participant} on the topic '{topic}'."
+
+        judge = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system",
+                 "content": "you are a binary judge that answers questions only with yes or no. You only say yes when you are REALLY convinced"},
+                {"role": "user",
+                 "content": f"Based on this conviction: {conv}, how would you answer {issue}?"}
+            ],
+        )
+        return judge['choices'][0]['message']['content']
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
 
 
 def score_conviction(participant, topic):
-    iss = public_discussions.get(where={'theme': topic})
-    issue = iss['metadatas'][0]['issue']
-    conv = get_latest_conviction(participant, topic)
-    judge = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "You only answer with a number"},
-            {"role": "user",
-             "content": f"Based on {conv}, answer {issue} and rate it on a scale from 1 - 100, 1 meaning not convinced at all, 100 being totally convinced"}
-        ]
-    )
-    return judge['choices'][0]['message']['content']
+    try:
+        iss = public_discussions.get(where={'theme': topic})
+        issue = iss.get('metadatas', [{}])[0].get('issue')
+        if not issue:
+            return f"Issue not found for the topic '{topic}'."
+
+        conv = get_latest_conviction(participant, topic)
+        if not conv:
+            return f"No conviction found for {participant} on the topic '{topic}'."
+
+        judge = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You only answer with a number"},
+                {"role": "user",
+                 "content": f"Based on {conv}, answer {issue} and rate it on a scale from 1 - 100, 1 meaning not convinced at all, 100 being totally convinced"}
+            ]
+        )
+        return judge['choices'][0]['message']['content']
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
 
 
 def update_conviction(participant, topic, new_conviction):
+    if not new_conviction or not topic:
+        return "Conviction or topic cannot be empty."
+
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.session_state['collections'][collection_name].add(documents=new_conviction, metadatas={'theme': topic},
-                                                         ids=topic + timestamp_string)
+
+    collection = get_or_create_collection(chroma, collection_name)
+
+    try:
+        collection.add(documents=new_conviction, metadatas={'theme': topic}, ids=topic + timestamp_string)
+        return f"Conviction updated for {participant} on topic '{topic}'."
+    except Exception as e:
+        return f"An error occurred while updating conviction: {str(e)}"
+
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
+    # Überprüfen, ob das Argument und die Überzeugung gültig sind
+    if not argument:
+        return "Das Argument darf nicht leer sein."
+
     con = get_latest_conviction(listener, chosen_topic)
-    list = get_convincing_factors()
-    judge = openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "system",
-             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly"},
-            {"role": "user",
-             "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
-        ]
-    )
-    ans = judge['choices'][0]['message']['content']
-    update_conviction(listener, chosen_topic, ans)
-    return ans
+    if not con:
+        return f"Keine vorhandene Überzeugung für {listener} zum Thema '{chosen_topic}' gefunden."
+
+    list = get_file_content_or_fetch_from_gpt('ConvincingFactors.txt', criteria_prompt, "extract_headings")
+
+    try:
+        judge = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system",
+                 "content": f"Sie bewerten ein Argument auf Basis von {list} und passen eine vorherige Überzeugung entsprechend an."},
+                {"role": "user",
+                 "content": f"Bewerten Sie dieses Argument: {argument} und formulieren Sie {con} entsprechend um. Schreiben Sie nur in der ersten Person."}
+            ]
+        )
+        ans = judge['choices'][0]['message']['content']
+        update_conviction(listener, chosen_topic, ans)
+        return ans
+    except Exception as e:
+        return f"Ein Fehler ist aufgetreten: {str(e)}"
+
 
 
 def lets_goooooo(participants, chosen_topic):
-
-    st.session_state['all_against'] = True
-    st.session_state['all_on_board'] = True
+    all_on_board = True
+    all_against = True
 
     for participant in participants:
         res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
-            st.session_state['all_on_board'] = False
+            all_on_board = False
+            if not all_against:
+                break  # Frühzeitiger Abbruch, da das Ergebnis feststeht
+        elif 'yes' in res.lower():
+            all_against = False
+            if not all_on_board:
+                break  # Frühzeitiger Abbruch, da das Ergebnis feststeht
+        else:
+            # Fehlerbehandlung für den Fall, dass judge_concivtion keinen klaren 'yes' oder 'no' Wert zurückgibt
+            print(f"Unerwartete Antwort von judge_concivtion: {res}")
+            return False, False
 
-        if 'yes' in res.lower():
-            st.session_state['all_against'] = False
-
-    return st.session_state['all_on_board'],  st.session_state['all_against']
+    return all_on_board, all_against
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
@@ -768,66 +788,70 @@ def make_first_person(conviction):
     return conviction
 
 
-def next_conversation(given_chosen_topic=""):
-    loop_counter = 0
+def classify_participants(participants, topic):
     pros = []
     contras = []
-    while not st.session_state['all_on_board'] and not st.session_state['all_against']:
-        loop_counter += 1
-        randomizer = []
-        # um nicht die ursprüngliche liste zu überschreiben:
-        if loop_counter == 1:
-            for item in participants_list:
-                randomizer.append(item)
-            # falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
-            for item in randomizer:
-                if 'yes' in judge_concivtion(item, given_chosen_topic).lower():
-                    pros.append(item)
-                else:
-                    contras.append(item)
+    for participant in participants:
+        if 'yes' in judge_concivtion(participant, topic).lower():
+            pros.append(participant)
+        else:
+            contras.append(participant)
+    return pros, contras
 
-        for speaker in pros:
-            start_number = public_discussions.count() + 1
-            speaker_argument = form_argument(speaker, given_chosen_topic, 'yes')
-            print(speaker_argument)
-            for listener in contras:
-                new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-                print(new_listener_conviction)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+def update_discussions_and_convictions(argument, listeners, topic, stance):
+    for listener in listeners:
+        new_conviction = argument_vs_conviction(argument, listener, topic)
+        update_conviction(listener, topic, new_conviction)
+        add_argument_to_public_discussions(argument, topic, stance)
 
-        for listener in contras:
-            if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
-                contras.remove(listener)
-                pros.append(listener)
-            listener_argument = form_argument(listener, given_chosen_topic, 'no')
-            print(listener_argument)
-            for speaker in pros:
-                new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+def add_argument_to_public_discussions(argument, topic, stance):
+    start_number = public_discussions.count() + 1
+    public_discussions.add(documents=argument, ids=str(start_number),
+                           metadatas={'theme': topic, 'issue': get_yes_or_no(topic), 'stance': stance})
 
-        for speaker in pros:
-            if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
-                pros.index(speaker)
-                contras.append(speaker)
+def update_positions(pros, contras, topic):
+    updated_pros = pros[:]
+    updated_contras = contras[:]
 
-        # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
-        # auftaucht) {argument}
-        new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+    for speaker in pros:
+        if 'no' in judge_concivtion(speaker, topic).lower():
+            updated_pros.remove(speaker)
+            updated_contras.append(speaker)
 
-        st.session_state['all_on_board'],  st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
+    for listener in contras:
+        if 'yes' in judge_concivtion(listener, topic).lower():
+            updated_contras.remove(listener)
+            updated_pros.append(listener)
 
+    return updated_pros, updated_contras
+
+def handle_conversation_outcome(loop_counter):
     if loop_counter < 4:
-        # video_path=''
-        print('magic')
-        if st.session_state['all_on_board']:
-            x = 0  # os.system("shutdown /s /t 1")
-        if st.session_state['all_against']:
-            print('')
-            # os.startfile(video_path)
+        print('Ergebnis der Konversation wurde innerhalb von 4 Durchläufen erreicht.')
+        # Weitere Logik hier, falls nötig
     else:
-        print('no magic')
+        print('Keine Einigung nach 4 Durchläufen.')
+
+def next_conversation(participants_list, given_chosen_topic=""):
+    loop_counter = 0
+    pros, contras = classify_participants(participants_list, given_chosen_topic)
+
+    while not (st.session_state['all_on_board'] or st.session_state['all_against']) and loop_counter < 4:
+        loop_counter += 1
+        process_arguments(pros, contras, given_chosen_topic)
+        pros, contras = update_positions(pros, contras, given_chosen_topic)
+        st.session_state['all_on_board'], st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
+
+    handle_conversation_outcome(loop_counter)
+
+
+def process_arguments(pros, contras, topic):
+    for group, stance in [(pros, 'yes'), (contras, 'no')]:
+        for participant in group:
+            argument = form_argument(participant, topic, stance)
+            update_discussions_and_convictions(argument, contras if stance == 'yes' else pros, topic, stance)
+
+
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -866,49 +890,57 @@ def start_first_conversation():
 
 # --------------------------------------- Steamlit ab hier ---------------------------------------
 
-def start_conversation():
+def start_conversation(participants_list):
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        full_response = ""
-        first_conv_str, extracted_topics = start_first_conversation()
-        full_response += first_conv_str
-        message_placeholder.markdown(full_response)
+        first_conv_str, extracted_topics = start_first_conversation(participants_list)
+        message_placeholder.markdown(first_conv_str)
 
 
+def handle_user_input(user_input, participants_list):
+    if user_input.lower() == "start":
+        start_conversation(participants_list)
+    elif user_input.lower() == "end":
+        end_conversation()  # Eine Funktion, die definiert, was bei "End" passieren soll
+    else:
+        next_conversation(user_input)
+
+
+def end_conversation():
+    with st.chat_message("assistant"):
+        st.markdown("Die Konversation wurde beendet.")
+
+
+# Haupt-Streamlit-Code
 participants_list = []
+
+# ...
+
+# Haupt-Streamlit-Code
+# ...
 
 with st.sidebar:
     part_1 = st.text_input("First participant", "Elon Musk", key="part_1_input")
     part_2 = st.text_input("Second participant", "Karl Marx", key="part_2_input")
     if part_1 and part_2:
-        participant_prompt = f"This will be a conversation between {part_1} and {part_2}."
-        participants_list.append(part_1)
-        participants_list.append(part_2)
+        participants_list = [part_1, part_2]
 
 st.title("💬 ConversationsBot")
 st.caption("🚀 A streamlit bot powered by OpenAI LLM")
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-3.5-turbo"
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-counter = 0
 with st.chat_message("assistant"):
-    st.markdown(f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
-                f"Enter a Topic, if you want to continue with the next conversation! "
-                f"And enter \"End\", if you want to quit.")
+    st.markdown("Bitte geben Sie \"Start\" ein, um ein Gespräch zu beginnen. "
+                "Geben Sie ein Thema ein, um das Gespräch fortzusetzen, "
+                "und \"End\", um das Gespräch zu beenden.")
+
 if user_input_prompt := st.chat_input("Enter here..."):
-    st.session_state.messages.append({"role": "user", "content": user_input_prompt})
-    with st.chat_message("user"):
-        st.markdown(user_input_prompt)
-    if user_input_prompt == "Start" or user_input_prompt == "start":
-        start_conversation()
-    elif user_input_prompt == "End" or user_input_prompt == "end":
-        with st.chat_message("assistant"):
-            st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
-    else:
-        next_conversation(user_input_prompt)
+    handle_user_input(user_input_prompt, participants_list)
+
+
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
