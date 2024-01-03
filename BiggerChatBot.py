@@ -810,7 +810,6 @@ def make_first_person(conviction):
 
 
 def next_conversation(given_chosen_topic=""):
-    global all_on_board, all_against
     loop_counter = 0
     pros = []
     contras = []
