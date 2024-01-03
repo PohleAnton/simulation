@@ -906,7 +906,8 @@ if user_input_prompt := st.chat_input("Enter here..."):
     if user_input_prompt == "Start" or user_input_prompt == "start":
         start_conversation()
     elif user_input_prompt == "End" or user_input_prompt == "end":
-        st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
+        with st.chat_message("assistant"):
+            st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
     else:
         next_conversation(user_input_prompt)
 
