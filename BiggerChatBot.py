@@ -766,18 +766,18 @@ def argument_vs_conviction(argument, listener, chosen_topic):
 
 
 def lets_goooooo(participants, chosen_topic):
-    global all_on_board
-    global all_against
-    all_against = True
-    all_on_board = True
+
+    st.session_state['all_against'] = True
+    st.session_state['all_on_board'] = True
+
     for participant in participants:
         res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
-            all_on_board = False
+            st.session_state['all_on_board'] = False
 
         if 'yes' in res.lower():
-            all_against = False
+            st.session_state['all_against'] = False
 
     return all_on_board, all_against
 
@@ -814,7 +814,7 @@ def next_conversation(given_chosen_topic=""):
     loop_counter = 0
     pros = []
     contras = []
-    while not all_on_board and not all_against:
+    while not st.session_state['all_on_board'] and not st.session_state['all_against']:
         loop_counter += 1
         randomizer = []
         # um nicht die ursprüngliche liste zu überschreiben:
@@ -858,14 +858,14 @@ def next_conversation(given_chosen_topic=""):
         # auftaucht) {argument}
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
+        st.session_state['all_on_board'],  st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
 
     if loop_counter < 4:
         # video_path=''
         print('magic')
-        if all_on_board:
+        if st.session_state['all_on_board']:
             x = 0  # os.system("shutdown /s /t 1")
-        if all_against:
+        if st.session_state['all_against']:
             print('')
             # os.startfile(video_path)
     else:
