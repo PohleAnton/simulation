@@ -21,19 +21,20 @@ chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant
 
 
 
+first_finished=False
+# if 'first_finished' not in st.session_state:
+#     st.session_state['first_finished'] = False
+all_topics=[]
+# if 'all_topics' not in st.session_state:
+#     st.session_state['all_topics'] = []
 
-if 'first_finished' not in st.session_state:
-    st.session_state['first_finished'] = False
-if 'all_topics' not in st.session_state:
-    st.session_state['all_topics'] = []
 
-
-
-if 'all_on_board' not in st.session_state:
-    st.session_state['all_on_board'] = False
-
-if 'all_against' not in st.session_state:
-    st.session_state['all_against'] = False
+all_on_board=False
+# if 'all_on_board' not in st.session_state:
+#     st.session_state['all_on_board'] = False
+all_against=False
+# if 'all_against' not in st.session_state:
+#     st.session_state['all_against'] = False
 
 
 def collection_exists(chroma_client, collection_name):
@@ -43,25 +44,33 @@ def collection_exists(chroma_client, collection_name):
     except Exception:
         return False
 
-##ToDo: nur einmal einlesen oder bei jedem run?
-public_discussions = None
-if not collection_exists(chroma, "public_discussions"):
-    public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
-else:
-    public_discussions = chroma.get_collection(name='public_discussions')
+# ##ToDo: nur einmal einlesen oder bei jedem run?
+# public_discussions = None
+# if not collection_exists(chroma, "public_discussions"):
+try:
+    #sowohl cosine als auch ip liefern deutlich bessere ergebnisse als l2
+    public_discussions = chroma.create_collection(name="public_discussions", metadata={"hnsw:space": "cosine"},  embedding_function=openai_ef)
+except Exception:
+    public_discussions = chroma.get_collection(name="public_discussions")
+#else:
+    #public_discussions = chroma.get_collection(name='public_discussions')
 
-##ToDo: nur einmal einlesen oder bei jedem run?
-participant_collection = None
-if not collection_exists(chroma, "participants"):
+# ##ToDo: nur einmal einlesen oder bei jedem run?
+# participant_collection = None
+# # if not collection_exists(chroma, "participants"):
+try:
     participant_collection = chroma.create_collection(name="participants")
-else:
-    participant_collection = chroma.get_collection('participants')
+except Exception:
+    participant_collection = chroma.get_collection(name="participants")
+# else:
+#     participant_collection = chroma.get_collection('participants')
 
-##ToDo: nur einmal einlesen oder bei jedem run?
-prior_themes_collection = None
-if not collection_exists(chroma, "prior_themes_collection"):
+# ##ToDo: nur einmal einlesen oder bei jedem run?
+# prior_themes_collection = None
+# if not collection_exists(chroma, "prior_themes_collection"):
+try:
     prior_themes = chroma.create_collection(name="prior_themes_collection")
-else:
+except Exception:
     prior_themes = chroma.get_collection("prior_themes_collection")
     theme_count = prior_themes.count()
     if theme_count > 0:
@@ -71,7 +80,18 @@ else:
                 if isinstance(item, list):
                     for sub_item in item:
                         if 'theme' in sub_item:
-                            st.session_state['all_topics'].append(sub_item['theme'])
+                            all_topics.append(sub_item['theme'])
+# else:
+#     prior_themes = chroma.get_collection("prior_themes_collection")
+#     theme_count = prior_themes.count()
+#     if theme_count > 0:
+#         themes = prior_themes.query(query_texts="any", n_results=theme_count)
+#         if 'metadatas' in themes:
+#             for item in themes:
+#                 if isinstance(item, list):
+#                     for sub_item in item:
+#                         if 'theme' in sub_item:
+#                             st.session_state['all_topics'].append(sub_item['theme'])
 
 criteria_prompt = ("Assume 2 people are having an intense intellectual conversation about a controversial topic. "
                    "Both of them start out with a strong conviction. Both are capable of changing their mind gradually. "
@@ -248,7 +268,6 @@ def read_from_file(file_path):
 
 
 def get_gpt_response(content):
-    # print(Research.segregation_str, "Content for Message:", content)
     response = openai.ChatCompletion.create(
         model=model,
         messages=[
@@ -346,7 +365,7 @@ def get_latest_conviction(participant, topic):
     try:
         id = get_latest_conviction_id(participant, topic)
         if id:
-            last_conviction = st.session_state['collections'][collection_name].get(ids=[id])
+            last_conviction = globals()[collection_name].get(ids=[id])
             return last_conviction['documents'][0]
         else:
             return ''
@@ -394,7 +413,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = make_first_person(res_json['conviction'])
-                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
                                                                          ids=topic + timestamp_string)
                 # falls irgendwie keine überzeugung gegeben
                 else:
@@ -410,7 +429,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     result = res["choices"][0]["message"]["function_call"]["arguments"]
                     res_json = json.loads(result)
                     final = make_first_person(res_json['conviction'])
-                    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
+                    globals()[collection_name].add(documents=final, metadatas={'theme': topic},
                                                                          ids=topic + timestamp_string)
             else:
                 res = openai.ChatCompletion.create(
@@ -427,7 +446,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                 final = make_first_person(res_json['conviction'])
                 print("Hier sind wa schon ma")
                 try:
-                    st.session_state['collections'][collection_name].add(documents=final,
+                    globals()[collection_name].add(documents=final,
                                                                          metadatas={'theme': topic},
                                                                          ids=topic + timestamp_string)
                 except KeyError:
@@ -452,11 +471,12 @@ def write_conviction_collection(participant, topic, arguments=''):
         result = res["choices"][0]["message"]["function_call"]["arguments"]
         res_json = json.loads(result)
         final = res_json['conviction']
-        if 'collections' not in st.session_state:
-            st.session_state['collections'] = {}
-        if collection_name not in st.session_state['collections']:
-            st.session_state['collections'][collection_name] = chroma.create_collection(collection_name)
-        st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic},
+        # if 'collections' not in st.session_state:
+        #     st.session_state['collections'] = {}
+        # if collection_name not in st.session_state['collections']:
+        #     st.session_state['collections'][collection_name] = chroma.create_collection(collection_name)
+        globals()[collection_name] = chroma.create_collection(collection_name)
+        globals()[collection_name].add(documents=final, metadatas={'theme': topic},
                                                              ids=topic + timestamp_string)
 
 
@@ -475,10 +495,10 @@ def safety_conviction(participant, topic):
     result = res["choices"][0]["message"]["function_call"]["arguments"]
     res_json = json.loads(result)
     final = res_json['conviction']
-    st.session_state['collections'][collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+    st.session_state['collections'].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
     # maybe this:
     # chroma.get_collection(collection_name)
-    # globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+    globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
 def find_core_issues(topic):
@@ -503,11 +523,16 @@ def find_core_issues(topic):
 
 
 # Sucht sich die Themen der Conversation zusammen
-def extract_topics_of_conversation(given_conversation):
+def extract_topics_of_conversation(given_conversation, participants_list):
+    global first_finished
+    global all_topics
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
     chroma_ids = []
+    sorted_list = sorted(participants_list)
+    participants = ', '.join(sorted_list)
+
     # zum token sparen wird mitunter direkt string übergeben:
     if isinstance(given_conversation, str):
         text = given_conversation
@@ -546,13 +571,13 @@ def extract_topics_of_conversation(given_conversation):
     except json.decoder.JSONDecodeError:
         new_data = json.dumps(data)
 
-    if not st.session_state['first_finished']:
+    if True:
         for theme in new_data["themes"]:
             #das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
             #Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
             #zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
             #beim entwickeln vermiedern werden
-            for prior_topic in st.session_state['all_topics']:
+            for prior_topic in all_topics:
                 judge = openai.ChatCompletion.create(
                     model=model,
                     messages=[
@@ -569,11 +594,11 @@ def extract_topics_of_conversation(given_conversation):
             chroma_ids.append(start_number)
             start_number += 1
             chroma_documents.append(theme['content'])
-            chroma_metadatas.append({'theme': theme['theme'], 'issue': find_core_issues(theme['theme'])})
+            chroma_metadatas.append({'theme': theme['theme'], 'issue': find_core_issues(theme['theme']), 'participants': participants})
 
         chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
-        st.session_state['first_finished'] = True
+        first_finished = True
 
         return conversation_topics
 
@@ -614,29 +639,52 @@ def query_public_discussions(query, results=10, precision=0.4):
     return result
 
 
-def get_best_document(topic, precise=False, precision=0.4):
+def get_best_document_simple(topic, participants_list):
+    #Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
+    r = public_discussions.get(where={'theme': topic})
+    checker = set(participants_list[0].split(', '))
+    final = []
+    for document, metadata in zip(r['documents'], r['metadatas']):
+        document_participants_str = metadata['participants']
+        document_participants_set = set(document_participants_str.split(', '))
+        if checker.issubset(document_participants_set):
+            final.append(document)
+    return final
+
+
+def get_best_document(topic, participants_list, precise=False, precision=0.3):
+
     r = public_discussions.query(query_texts=topic)
+
+    checker = set(participants_list[0].split(', '))
+    final = []
     if precise:
         filtered_documents = []
-        for distance, document in zip(r['distances'][0], r['documents'][0]):
+        for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
             if distance < precision:
                 filtered_documents.append(document)
-        return filtered_documents
+                document_participants_set = set(metadatas.get('participants').split(', '))
+
+            if checker.issubset(document_participants_set):
+                final.append(document)
+            #das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
+            #an denen sie nicht beteiligt waren
+        return final
     else:
         return r['documents']
 
 
-def get_prior_discussion(topic):
+def get_prior_discussion(topic, participants_list):
     # ToDo: Note to self: Vielleicht kann ich die query public discussions Methoden zusammenschrumpfen. Noch sind sie einzeln. Man weiß ja nie...
-    r = get_best_document(topic, True, 0.4)
+    r = get_best_document(topic, participants_list,True, 0.35)
     combined_string = "\n".join(r) if len(r) > 1 else r[0]
     return combined_string
 
 
-def form_argument(speaker, chosen_topic, believe):
+def form_argument(speaker, chosen_topic, believe, participants_list):
     strategy = get_stratey()
     speaker_conviction = get_latest_conviction(speaker, chosen_topic)
-    prior_discussions = get_prior_discussion(chosen_topic)
+    prior_discussions = get_prior_discussion(chosen_topic, participants_list)
     if 'yes' in believe.lower():
         speaker_argument = openai.ChatCompletion.create(
             model=model,
@@ -725,20 +773,21 @@ def argument_vs_conviction(argument, listener, chosen_topic):
 
 
 def lets_goooooo(participants, chosen_topic):
-
-    st.session_state['all_against'] = True
-    st.session_state['all_on_board'] = True
+    global all_on_board
+    global all_against
+    all_against = True
+    all_on_board = True
 
     for participant in participants:
         res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
-            st.session_state['all_on_board'] = False
+            all_on_board = False
 
         if 'yes' in res.lower():
-            st.session_state['all_against'] = False
+            all_against = False
 
-    return st.session_state['all_on_board'],  st.session_state['all_against']
+    return all_on_board, all_against
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
@@ -769,10 +818,12 @@ def make_first_person(conviction):
 
 
 def next_conversation(given_chosen_topic=""):
+    global all_on_board
+    global all_against
     loop_counter = 0
     pros = []
     contras = []
-    while not st.session_state['all_on_board'] and not st.session_state['all_against']:
+    while not all_on_board and not all_against:
         loop_counter += 1
         randomizer = []
         # um nicht die ursprüngliche liste zu überschreiben:
@@ -788,24 +839,24 @@ def next_conversation(given_chosen_topic=""):
 
         for speaker in pros:
             start_number = public_discussions.count() + 1
-            speaker_argument = form_argument(speaker, given_chosen_topic, 'yes')
+            speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', participants_list)
             print(speaker_argument)
             for listener in contras:
                 new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
                 print(new_listener_conviction)
             public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic), 'participants': participants_list})
 
         for listener in contras:
             if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
                 contras.remove(listener)
                 pros.append(listener)
-            listener_argument = form_argument(listener, given_chosen_topic, 'no')
+            listener_argument = form_argument(listener, given_chosen_topic, 'no', participants_list)
             print(listener_argument)
             for speaker in pros:
                 new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
             public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic)})
+                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic), 'participants': participants_list})
 
         for speaker in pros:
             if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
@@ -816,7 +867,7 @@ def next_conversation(given_chosen_topic=""):
         # auftaucht) {argument}
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-        st.session_state['all_on_board'],  st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
+        all_on_board,  all_against = lets_goooooo(participants_list, given_chosen_topic)
 
     if loop_counter < 4:
         # video_path=''
@@ -843,18 +894,20 @@ prompt = (
     "6. Involved Individuals: "
 )
 
-
+participants_list=['Elon Musk', 'Karl Marx']
 def start_first_conversation():
     fill_profile_schemes_for_participants(participants_list)
     prompt_for_first_conversation = prompt + join_profiles(participants_list)
     first_conversation_res = get_gpt_response(prompt_for_first_conversation)
     first_conversation_str = get_response_content(first_conversation_res)
 
-    extracted_topics = extract_topics_of_conversation(first_conversation_res)
+    extracted_topics = extract_topics_of_conversation(first_conversation_res, participants_list)
+    print('fertig')
     for participant in participants_list:
         add_knowledge_to_profile(participant, extracted_topics)
-
+    print('fertig')
     return first_conversation_str, extracted_topics
+
 
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
@@ -911,3 +964,17 @@ if user_input_prompt := st.chat_input("Enter here..."):
         next_conversation(user_input_prompt)
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
+
+
+# distance testing
+# requires
+#public_discussions2 = chroma.create_collection(name="public_discussions2", metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
+#public_discussions3 = chroma.create_collection(name="public_discussions3", metadata={"hnsw:space": "cosine"},  embedding_function=openai_ef)
+# doc="Elon: (sitting on a beach chair, watching the waves) Hey, Karl. How’s it going?Karl: (sitting next to Elon, sipping a glass of wine) Oh, you know, the usual. Thinking about the state of the world and all that.Elon: (smirking) Of course you are. Can’t seem to get away from all that existential angst, can you?Karl: (laughs) And you can’t seem to get away from your obsession with space and technology.Elon: (leaning back) Touché. But hey, I’ve been thinking about something lately that you might find interesting.Karl: (raises an eyebrow) Oh? And what might that be?Elon: The Simulation Hypothesis. You know, the idea that we could be living in a computer-generated reality.Karl: (sets down his wine glass) Oh, I’ve heard of that. It’s an intriguing concept. What are your thoughts on it?Elon: Well, if it’s true, then everything we know about the universe, about reality, about existence, could be just a bunch of code. It’s mind-boggling to think about the implications of that.Karl: (nodding) Indeed. It would mean that our understanding of the world, our struggles, our achievements, are all part of some grand simulation. It’s a challenging notion for someone like me, who has always focused on the material conditions of society."
+# public_discussions.add(documents=doc,ids="eins")
+# public_discussions2.add(documents=doc, ids="zwei")
+# public_discussions3.add(documents=doc, ids="zwei")
+#
+# res=public_discussions.query(query_texts=chosen_topic)
+# res2=public_discussions2.query(query_texts=chosen_topic)
+# res3=public_discussions3.query(query_texts=chosen_topic)
