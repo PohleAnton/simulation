@@ -1,15 +1,13 @@
-import streamlit as st
 import json
-import os
+import random
 from datetime import datetime
+from pathlib import Path
+
 import chromadb
 import openai
+import streamlit as st
 import yaml
-from pathlib import Path
-import random
 from chromadb.utils import embedding_functions
-import time
-import requests
 
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 model = "gpt-3.5-turbo-1106"
@@ -18,8 +16,9 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-#chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+# chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+
 
 def collection_exists(chroma_client, collection_name):
     try:
@@ -767,19 +766,20 @@ def argument_vs_conviction(argument, listener, chosen_topic):
 
 
 def lets_goooooo(participants, chosen_topic):
-
-    st.session_state['all_against'] = True
-    st.session_state['all_on_board'] = True
+    global all_on_board
+    global all_against
+    all_against = True
+    all_on_board = True
     for participant in participants:
         res = judge_concivtion(participant, chosen_topic)
 
         if 'no' in res.lower():
-            st.session_state['all_on_board'] = False
+            all_on_board = False
 
         if 'yes' in res.lower():
-            st.session_state['all_against'] = False
+            all_against = False
 
-    return st.session_state['all_on_board'], st.session_state['all_against']
+    return all_on_board, all_against
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
@@ -810,10 +810,11 @@ def make_first_person(conviction):
 
 
 def next_conversation(given_chosen_topic=""):
+    global all_on_board, all_against
     loop_counter = 0
     pros = []
     contras = []
-    while not st.session_state['all_on_board'] and not st.session_state['all_against']:
+    while not all_on_board and not all_against:
         loop_counter += 1
         randomizer = []
         # um nicht die ursprüngliche liste zu überschreiben:
@@ -857,42 +858,18 @@ def next_conversation(given_chosen_topic=""):
         # auftaucht) {argument}
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-        st.session_state['all_on_board'],  st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
+        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
 
     if loop_counter < 4:
         # video_path=''
         print('magic')
-        if  st.session_state['all_on_board']:
+        if all_on_board:
             x = 0  # os.system("shutdown /s /t 1")
-        if st.session_state['all_against']:
+        if all_against:
             print('')
             # os.startfile(video_path)
     else:
         print('no magic')
-
-
-participants_list = []
-
-with st.sidebar:
-    part_1 = st.text_input("First participant", "Elon Musk", key="part_1_input")
-    part_2 = st.text_input("Second participant", "Karl Marx", key="part_2_input")
-    if part_1 and part_2:
-        participant_prompt = f"This will be a conversation between {part_1} and {part_2}."
-        participants_list.append(part_1)
-        participants_list.append(part_2)
-
-st.title("💬 ConversationsBot")
-st.caption("🚀 A streamlit bot powered by OpenAI LLM")
-
-if "openai_model" not in st.session_state:
-    st.session_state["openai_model"] = "gpt-3.5-turbo"
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -919,7 +896,7 @@ def start_first_conversation():
     for participant in participants_list:
         add_knowledge_to_profile(participant, extracted_topics)
 
-    return first_conversation_str
+    return first_conversation_str, extracted_topics
 
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
@@ -928,32 +905,61 @@ def start_first_conversation():
 #         safety_conviction(participant, token_saver_topics)
 #         all_on_board , all_against = lets_goooooo(initial_participants, token_saver_topics)
 
+
+# --------------------------------------- Steamlit ab hier ---------------------------------------
+
+def start_conversation():
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
+        first_conv_str, extracted_topics = start_first_conversation()
+        full_response += first_conv_str
+        message_placeholder.markdown(full_response)
+
+
+participants_list = []
+
+with st.sidebar:
+    part_1 = st.text_input("First participant", "Elon Musk", key="part_1_input")
+    part_2 = st.text_input("Second participant", "Karl Marx", key="part_2_input")
+    if part_1 and part_2:
+        participant_prompt = f"This will be a conversation between {part_1} and {part_2}."
+        participants_list.append(part_1)
+        participants_list.append(part_2)
+
+st.title("💬 ConversationsBot")
+st.caption("🚀 A streamlit bot powered by OpenAI LLM")
+
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = "gpt-3.5-turbo"
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
 counter = 0
-with st.chat_message("assistant"):
-    st.markdown(f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
-                f"Enter a Topic, if you want to continue with the next conversation! "
-                f"And enter \"End\", if you want to quit.")
+instruction_str = (f"Please enter \"Start\" to start a conversation between {part_1} and {part_2}! "
+                   "Enter a Topic, if you want to continue with the next conversation! "
+                   "And enter \"End\", if you want to quit.")
+st.session_state.messages.append({"role": "assistent", "content": instruction_str})
+
+# for message in st.session_state.messages:
+#    st.chat_message(f"{message['role']}: {message['content']}")
 
 if user_input_prompt := st.chat_input("Enter here..."):
     st.session_state.messages.append({"role": "user", "content": user_input_prompt})
-    with st.chat_message("user"):
-        st.markdown(user_input_prompt)
-    if user_input_prompt == "Start" or user_input_prompt == "start":
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            first_conv_str = start_first_conversation()
-            full_response += first_conv_str
-            message_placeholder.markdown(full_response)
-    if user_input_prompt == "End" or user_input_prompt == "end":
-        st.markdown("kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma")
+
+    if user_input_prompt.lower() in ["start", "end"]:
+        if user_input_prompt == "start":
+            start_conversation()
+        elif user_input_prompt == "end":
+            with st.chat_message("assistant"):
+                st.session_state.messages.append({"role": "assistant",
+                                                  "content": "kp was jz passiert, aber irgendwie muss das ganze hier beendet werden. Mach ma"})
     else:
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            first_conv_str = start_first_conversation()
-            full_response += first_conv_str
-            message_placeholder.markdown(full_response)
         next_conversation(user_input_prompt)
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
