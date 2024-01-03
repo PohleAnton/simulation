@@ -278,28 +278,29 @@ def join_profiles(participants):
         profiles_of_participants += "\n\n"
     return profiles_of_participants
 
-
-def compare_themes(prior_topic, new_topics):
-    updated_topics = []
-    for new in new_topics:
-        replaced = False
-        for prior in prior_topic:
-            judge = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system",
-                     "content": "You compare 2 Strings and asses if they refer to the same concept. You only answer yes or no"},
-                    {"role": "user",
-                     "content": f"Does {prior} mean the same thing as {new}"}
-                ],
-            )
-            if 'Yes' in judge['choices'][0]['message']['content'] or 'yes' in judge['choices'][0]['message']['content']:
-                updated_topics.append(prior)
-                replaced = True
-
-        if not replaced:
-            updated_topics.append(new)
-    return updated_topics
+#vorerst deprecated. bleibt hier. safety first
+# def compare_themes(prior_topic, new_topics):
+#
+#     updated_topics = []
+#     for new in new_topics:
+#         replaced = False
+#         for prior in prior_topic:
+#             judge = openai.ChatCompletion.create(
+#                 model=model,
+#                 messages=[
+#                     {"role": "system",
+#                      "content": "You compare 2 Strings and asses if they refer to the same concept. You only answer yes or no"},
+#                     {"role": "user",
+#                      "content": f"Does {prior} mean the same thing as {new}"}
+#                 ],
+#             )
+#             if 'Yes' in judge['choices'][0]['message']['content'] or 'yes' in judge['choices'][0]['message']['content']:
+#                 updated_topics.append(prior)
+#                 replaced = True
+#
+#         if not replaced:
+#             updated_topics.append(new)
+#     return updated_topics
 
 
 def get_gpt_response_with_function(content, functions):
@@ -575,6 +576,9 @@ def extract_topics_of_conversation(given_conversation):
         st.session_state['first_finished'] = True
 
         return conversation_topics
+
+        #notiz: es gab hier noch einen block
+        #if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
 
 
 
