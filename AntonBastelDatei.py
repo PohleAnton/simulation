@@ -17,22 +17,23 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 )
 
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
-#chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+# chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
-
-first_finished=False
+first_finished = False
 # if 'first_finished' not in st.session_state:
 #     st.session_state['first_finished'] = False
-all_topics=[]
+all_topics = []
 # if 'all_topics' not in st.session_state:
 #     st.session_state['all_topics'] = []
 
 
-all_on_board=False
+all_on_board = False
 # if 'all_on_board' not in st.session_state:
 #     st.session_state['all_on_board'] = False
-all_against=False
+all_against = False
+
+
 # if 'all_against' not in st.session_state:
 #     st.session_state['all_against'] = False
 
@@ -44,16 +45,33 @@ def collection_exists(chroma_client, collection_name):
     except Exception:
         return False
 
+
 # ##ToDo: nur einmal einlesen oder bei jedem run?
 # public_discussions = None
 # if not collection_exists(chroma, "public_discussions"):
 try:
-    #sowohl cosine als auch ip liefern deutlich bessere ergebnisse als l2
-    public_discussions = chroma.create_collection(name="public_discussions", metadata={"hnsw:space": "cosine"},  embedding_function=openai_ef)
+    # sowohl cosine als auch ip liefern deutlich bessere ergebnisse als l2
+    public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
+
+    public_discussions4 = chroma.create_collection(name="public_discussions4", metadata={"hnsw:space": "cosine"},
+                                                   embedding_function=openai_ef)
+
+    public_discussions5 = chroma.create_collection(name="public_discussions5", metadata={"hnsw:space": "ip"},
+                                                   embedding_function=openai_ef)
 except Exception:
     public_discussions = chroma.get_collection(name="public_discussions")
-#else:
-    #public_discussions = chroma.get_collection(name='public_discussions')
+    theme_count = public_discussions.count()
+    if theme_count > 0:
+        themes = public_discussions.query(query_texts="any", n_results=theme_count)
+        if 'metadatas' in themes:
+            for item in themes['metadatas']:
+                print(item[0]['theme'])
+                if isinstance(item, list):
+                    for sub_item in item:
+                        if 'theme' in sub_item:
+                            all_topics.append(sub_item['theme'])
+# else:
+# public_discussions = chroma.get_collection(name='public_discussions')
 
 # ##ToDo: nur einmal einlesen oder bei jedem run?
 # participant_collection = None
@@ -65,22 +83,22 @@ except Exception:
 # else:
 #     participant_collection = chroma.get_collection('participants')
 
-# ##ToDo: nur einmal einlesen oder bei jedem run?
-# prior_themes_collection = None
-# if not collection_exists(chroma, "prior_themes_collection"):
-try:
-    prior_themes = chroma.create_collection(name="prior_themes_collection")
-except Exception:
-    prior_themes = chroma.get_collection("prior_themes_collection")
-    theme_count = prior_themes.count()
-    if theme_count > 0:
-        themes = prior_themes.query(query_texts="any", n_results=theme_count)
-        if 'metadatas' in themes:
-            for item in themes:
-                if isinstance(item, list):
-                    for sub_item in item:
-                        if 'theme' in sub_item:
-                            all_topics.append(sub_item['theme'])
+# # ##ToDo: nur einmal einlesen oder bei jedem run?
+# # prior_themes_collection = None
+# # if not collection_exists(chroma, "prior_themes_collection"):
+# try:
+#     prior_themes = chroma.create_collection(name="prior_themes_collection")
+# except Exception:
+#     prior_themes = chroma.get_collection("prior_themes_collection")
+#     theme_count = prior_themes.count()
+#     if theme_count > 0:
+#         themes = prior_themes.query(query_texts="any", n_results=theme_count)
+#         if 'metadatas' in themes:
+#             for item in themes:
+#                 if isinstance(item, list):
+#                     for sub_item in item:
+#                         if 'theme' in sub_item:
+#                             all_topics.append(sub_item['theme'])
 # else:
 #     prior_themes = chroma.get_collection("prior_themes_collection")
 #     theme_count = prior_themes.count()
@@ -102,6 +120,24 @@ strategies_prompt = ("What strategies might one pick to form a convincing argume
 
 functions = [
     {
+        "name": "score_conviction_answer_question",
+        "description": "A function that answers a question based on a conviction and scores the strength of that conviction",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "The answer to the question based on the conviction. Yes or no only"
+                },
+                "score": {
+                    "type": "number",
+                    "description": "On a scale from 1 to 100, where 1 means 'not convinced at all' and 100 means 'absolutely convinced without any doubt', how strong is this conviction?"
+                },
+            },
+            "required": ["conviction", "question"]
+        }
+    },
+    {
         "name": "extract_core_issue",
         "description": "A function that identifies the core question of topic and poses the appropriate Yes-Or-No Question",
         "parameters": {
@@ -109,7 +145,7 @@ functions = [
             "properties": {
                 "core_issue": {
                     "type": "string",
-                    "description": "The Yes-Or-No Question at the heart of the topic"
+                    "description": "The Yes-Or-No Question at the heart of the topic. As short as possible"
                 }
             },
             "required": ["topic"]
@@ -180,7 +216,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Use first-person pronouns only, Inner most believe of a participant about a subject. Radical, emotional and subjective. Do not mention the name of the participant"
+                    "description": "Use first-person pronouns only without any reference to other individuals. Inner most believe of a participant about a subject. Radical, emotional and subjective."
                 }
             }
         }
@@ -193,7 +229,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Use first-person pronouns only,. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle. Do not mention the name of the participant"
+                    "description": "Use first-person pronouns only without any reference to other individuals. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle."
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
@@ -233,8 +269,8 @@ functions = [
 
 
 def get_convincing_factors():
-    #consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
-    #step back prompted, file will exist
+    # consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
+    # step back prompted, file will exist
     dir_name = './FilesForDocker'
     file_name = 'ConvincingFactors.txt'
     current_dir = Path(__file__).parent
@@ -246,7 +282,7 @@ def get_convincing_factors():
 
 
 def get_stratey():
-    #consider this: https://chat.openai.com/share/05e5d5e0-ffec-4205-8705-8067ae5c8764
+    # consider this: https://chat.openai.com/share/05e5d5e0-ffec-4205-8705-8067ae5c8764
     # step back prompted, file will exist
     dir_name = './FilesForDocker'
     file_name = 'Strategies.txt'
@@ -297,7 +333,8 @@ def join_profiles(participants):
         profiles_of_participants += "\n\n"
     return profiles_of_participants
 
-#vorerst deprecated. bleibt hier. safety first
+
+# vorerst deprecated. bleibt hier. safety first
 # def compare_themes(prior_topic, new_topics):
 #
 #     updated_topics = []
@@ -414,7 +451,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     res_json = json.loads(result)
                     final = make_first_person(res_json['conviction'])
                     globals()[collection_name].add(documents=final, metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
+                                                   ids=topic + timestamp_string)
                 # falls irgendwie keine überzeugung gegeben
                 else:
                     res = openai.ChatCompletion.create(
@@ -430,7 +467,7 @@ def write_conviction_collection(participant, topic, arguments=''):
                     res_json = json.loads(result)
                     final = make_first_person(res_json['conviction'])
                     globals()[collection_name].add(documents=final, metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
+                                                   ids=topic + timestamp_string)
             else:
                 res = openai.ChatCompletion.create(
                     model=model,
@@ -447,8 +484,8 @@ def write_conviction_collection(participant, topic, arguments=''):
                 print("Hier sind wa schon ma")
                 try:
                     globals()[collection_name].add(documents=final,
-                                                                         metadatas={'theme': topic},
-                                                                         ids=topic + timestamp_string)
+                                                   metadatas={'theme': topic},
+                                                   ids=topic + timestamp_string)
                 except KeyError:
                     print(f"KeyError beim Aufruf der Collection {collection_name}")
 
@@ -477,7 +514,7 @@ def write_conviction_collection(participant, topic, arguments=''):
         #     st.session_state['collections'][collection_name] = chroma.create_collection(collection_name)
         globals()[collection_name] = chroma.create_collection(collection_name)
         globals()[collection_name].add(documents=final, metadatas={'theme': topic},
-                                                             ids=topic + timestamp_string)
+                                       ids=topic + timestamp_string)
 
 
 def safety_conviction(participant, topic):
@@ -573,10 +610,10 @@ def extract_topics_of_conversation(given_conversation, participants_list):
 
     if True:
         for theme in new_data["themes"]:
-            #das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
-            #Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
-            #zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
-            #beim entwickeln vermiedern werden
+            # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
+            # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
+            # zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
+            # beim entwickeln vermiedern werden
             for prior_topic in all_topics:
                 judge = openai.ChatCompletion.create(
                     model=model,
@@ -594,7 +631,8 @@ def extract_topics_of_conversation(given_conversation, participants_list):
             chroma_ids.append(start_number)
             start_number += 1
             chroma_documents.append(theme['content'])
-            chroma_metadatas.append({'theme': theme['theme'], 'issue': find_core_issues(theme['theme']), 'participants': participants})
+            chroma_metadatas.append(
+                {'theme': theme['theme'], 'issue': find_core_issues(theme['theme']), 'participants': participants})
 
         chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
@@ -602,14 +640,12 @@ def extract_topics_of_conversation(given_conversation, participants_list):
 
         return conversation_topics
 
-        #notiz: es gab hier noch einen block
-        #if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
-
-
+        # notiz: es gab hier noch einen block
+        # if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
 
 
 def add_knowledge_to_profile(participant, given_topics):
-    #ist ein Überbleibsel aus komplexerem Code,.
+    # ist ein Überbleibsel aus komplexerem Code,.
     for topic in given_topics:
         write_conviction_collection(participant, topic)
 
@@ -640,7 +676,7 @@ def query_public_discussions(query, results=10, precision=0.4):
 
 
 def get_best_document_simple(topic, participants_list):
-    #Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
+    # Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
     r = public_discussions.get(where={'theme': topic})
     checker = set(participants_list[0].split(', '))
     final = []
@@ -649,11 +685,11 @@ def get_best_document_simple(topic, participants_list):
         document_participants_set = set(document_participants_str.split(', '))
         if checker.issubset(document_participants_set):
             final.append(document)
-    return final
+    final_string = '\n'.join(final)
+    return final_string
 
 
 def get_best_document(topic, participants_list, precise=False, precision=0.3):
-
     r = public_discussions.query(query_texts=topic)
 
     checker = set(participants_list[0].split(', '))
@@ -667,16 +703,17 @@ def get_best_document(topic, participants_list, precise=False, precision=0.3):
 
             if checker.issubset(document_participants_set):
                 final.append(document)
-            #das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
-            #an denen sie nicht beteiligt waren
-        return final
+            # das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
+            # an denen sie nicht beteiligt waren
+        final_string = '\n'.join(final)
+        return final_string
     else:
         return r['documents']
 
 
 def get_prior_discussion(topic, participants_list):
     # ToDo: Note to self: Vielleicht kann ich die query public discussions Methoden zusammenschrumpfen. Noch sind sie einzeln. Man weiß ja nie...
-    r = get_best_document(topic, participants_list,True, 0.35)
+    r = get_best_document(topic, participants_list, True, 0.35)
     combined_string = "\n".join(r) if len(r) > 1 else r[0]
     return combined_string
 
@@ -732,7 +769,7 @@ def judge_concivtion(participant, topic):
     response = judge['choices'][0]['message']['content']
     return response
 
-
+##deprecated
 def score_conviction(participant, topic):
     iss = public_discussions.get(where={'theme': topic})
     issue = iss['metadatas'][0]['issue']
@@ -746,12 +783,77 @@ def score_conviction(participant, topic):
         ]
     )
     return judge['choices'][0]['message']['content']
+##deprecated
+def score_conviction_2(participant, topic):
+    iss = public_discussions.get(where={'theme': topic})
+    issue = iss['metadatas'][0]['issue']
+    conv = get_latest_conviction(participant, topic)
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You only answer with a number"},
+            {"role": "user",
+             "content": f"Considering your conviction {conv} about {topic}: On a scale from 1 to 100, where 1 means 'not convinced at all' and 100 means 'absolutely convinced without any doubt', how convinced are you that {issue}?"}
+        ]
+    )
+    return judge['choices'][0]['message']['content']
 
+
+def score_conviction_and_answer(participant, topic):
+    # je "trivialer" das Thema, umso besser erzeugt GPT überzeugungen passend zur Person. Je abstrakter das Thema, umso
+    # unzuverlässiger die Antworten (gilt auch für GPT4) - deswegen werden hier 2 separate Werte genutzt, da die Werte konsistenter sind.
+    # das wird außerdem als failsafe verwendet, damit nicht sofort alle überzeugt sind - im grunde spricht ja nichts dagegen, macht aber
+    # nicht so viel her
+    question = get_yes_or_no(topic)
+    conviction = get_latest_conviction(participant, topic)
+    res = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "user",
+             "content": f"score_conviction_answer_question: Score this conviction {conviction} and answer this this question:{question} based upon it "}
+        ],
+        functions=functions,
+        function_call={'name': 'score_conviction_answer_question'}
+    )
+    result = json.loads(res["choices"][0]["message"]["function_call"]["arguments"])
+    answer = result['answer']
+    score = result['score']
+    return answer, score
+
+
+def flip_conviction(participant, topic):
+    conviction = get_latest_conviction(participant, topic)
+    #hier nun der Failsafe: Um die Präsentation interessant zu gestalten, soll sichergestellt werden, dass zu Beginn nicht alle die gleiche überzeugung haben.
+    result = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "user", "content": f"Consider this conviction: {conviction}. Write a text that expresses the opposite opinion.Use first-person pronouns only without any reference to other individuals.  Radical, emotional and subjective."}
+        ]
+    )
+    update_conviction(participant, topic, result['choices'][0]['message']['content'])
+    return result['choices'][0]['message']['content']
+
+def flip_needed(particants_list, topic):
+    both_yes = True
+    both_no = True
+    answers=[]
+    for particant in particants_list:
+        answer, score = score_conviction_and_answer(particant, topic)
+        answers.append(answer)
+    for item in answers:
+        if 'no' in item.lower():
+            both_yes = False
+        if 'yes' in item.lower():
+            both_no = False
+    if both_yes and both_no:
+        return True
+    else:
+        return False
 
 def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.session_state['collections'][collection_name].add(documents=new_conviction, metadatas={'theme': topic},
+    globals()[collection_name].add(documents=new_conviction, metadatas={'theme': topic},
                                                          ids=topic + timestamp_string)
 
 
@@ -809,7 +911,7 @@ def make_first_person(conviction):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"rewrite this text using first-person pronouns only: {conviction}"
+                 "content": f"rewrite this text using first-person pronouns only without any references to other individuals or third-person statements: {conviction}. Radical, emotional, subjective"
                  }
             ]
         )
@@ -818,8 +920,13 @@ def make_first_person(conviction):
 
 
 def next_conversation(given_chosen_topic=""):
+    flip = flip_needed(participants_list, given_chosen_topic)
+    while flip:
+        flip_conviction(random.choice[participants_list])
+        flip = flip_needed(participants_list, given_chosen_topic)
     global all_on_board
     global all_against
+
     loop_counter = 0
     pros = []
     contras = []
@@ -832,20 +939,28 @@ def next_conversation(given_chosen_topic=""):
                 randomizer.append(item)
             # falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
             for item in randomizer:
-                if 'yes' in judge_concivtion(item, given_chosen_topic).lower():
+                if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
                     pros.append(item)
                 else:
                     contras.append(item)
-
+                print('fertig')
         for speaker in pros:
             start_number = public_discussions.count() + 1
             speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', participants_list)
             print(speaker_argument)
-            for listener in contras:
-                new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-                print(new_listener_conviction)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic), 'participants': participants_list})
+            # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen
+            # for listener in contras:
+            #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+            #     print(new_listener_conviction)
+            # public_discussions.add(documents=speaker_argument, ids=str(start_number),
+            #                        metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                   'participants': participants_list})
+            # public_discussions4.add(documents=speaker_argument, ids=str(start_number),
+            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                    'participants': participants_list})
+            # public_discussions5.add(documents=speaker_argument, ids=str(start_number),
+            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                    'participants': participants_list})
 
         for listener in contras:
             if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
@@ -853,11 +968,17 @@ def next_conversation(given_chosen_topic=""):
                 pros.append(listener)
             listener_argument = form_argument(listener, given_chosen_topic, 'no', participants_list)
             print(listener_argument)
-            for speaker in pros:
-                new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic), 'participants': participants_list})
-
+            # for speaker in pros:
+            #     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
+            # public_discussions.add(documents=speaker_argument, ids=str(start_number),
+            #                        metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                   'participants': participants_list})
+            # public_discussions4.add(documents=speaker_argument, ids=str(start_number),
+            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                    'participants': participants_list})
+            # public_discussions5.add(documents=speaker_argument, ids=str(start_number),
+            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
+            #                                    'participants': participants_list})
         for speaker in pros:
             if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
                 pros.index(speaker)
@@ -867,7 +988,7 @@ def next_conversation(given_chosen_topic=""):
         # auftaucht) {argument}
         new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-        all_on_board,  all_against = lets_goooooo(participants_list, given_chosen_topic)
+        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
 
     if loop_counter < 4:
         # video_path=''
@@ -879,6 +1000,17 @@ def next_conversation(given_chosen_topic=""):
             # os.startfile(video_path)
     else:
         print('no magic')
+
+
+def reset_convictions(participants_list):
+    # nicht schön, aber nötig.
+    for participant in participants_list:
+        collection_name = participant.replace(' ', '') + 'Conviction'
+        try:
+            t = chroma.get_collection(collection_name)
+            chroma.delete_collection(collection_name)
+        except Exception:
+            pass
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -894,8 +1026,11 @@ prompt = (
     "6. Involved Individuals: "
 )
 
-participants_list=['Elon Musk', 'Karl Marx']
+participants_list = ['Elon Musk', 'Karl Marx']
+
+
 def start_first_conversation():
+    reset_convictions(participants_list)
     fill_profile_schemes_for_participants(participants_list)
     prompt_for_first_conversation = prompt + join_profiles(participants_list)
     first_conversation_res = get_gpt_response(prompt_for_first_conversation)
@@ -909,6 +1044,28 @@ def start_first_conversation():
     return first_conversation_str, extracted_topics
 
 
+##ToDo for testing only
+given_chosen_topic = 'simulation hypothesis'
+given_chosen_topic = 'liberation and equality'
+eins = public_discussions.query(query_texts=given_chosen_topic)
+public_discussions4.add(documents=eins['documents'][0][0], ids="eins")
+zwei = public_discussions4.query(query_texts=given_chosen_topic)
+public_discussions5.add(documents=eins['documents'][0][0], ids="eins")
+drei = public_discussions5.query(query_texts=given_chosen_topic)
+
+karl = get_latest_conviction('Karl Marx', test_topic)
+karl = make_first_person(karl)
+elon = get_latest_conviction('Elon Musk', test_topic)
+k_s = score_conviction_2('Karl Marx', given_chosen_topic)
+e_s = score_conviction_2('Elon Musk', given_chosen_topic)
+
+question = get_yes_or_no(given_chosen_topic)
+test_topic = 'Capitalism is good'
+test_question = 'Is capitalism good?'
+write_conviction_collection('Elon Musk', test_topic)
+print('fertig')
+
+t =score_conviction_and_answer('Karl Marx', given_chosen_topic)[0]
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
 # while all_on_board or all_against:
@@ -968,8 +1125,8 @@ if user_input_prompt := st.chat_input("Enter here..."):
 
 # distance testing
 # requires
-#public_discussions2 = chroma.create_collection(name="public_discussions2", metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
-#public_discussions3 = chroma.create_collection(name="public_discussions3", metadata={"hnsw:space": "cosine"},  embedding_function=openai_ef)
+# public_discussions2 = chroma.create_collection(name="public_discussions2", metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
+# public_discussions3 = chroma.create_collection(name="public_discussions3", metadata={"hnsw:space": "cosine"},  embedding_function=openai_ef)
 # doc="Elon: (sitting on a beach chair, watching the waves) Hey, Karl. How’s it going?Karl: (sitting next to Elon, sipping a glass of wine) Oh, you know, the usual. Thinking about the state of the world and all that.Elon: (smirking) Of course you are. Can’t seem to get away from all that existential angst, can you?Karl: (laughs) And you can’t seem to get away from your obsession with space and technology.Elon: (leaning back) Touché. But hey, I’ve been thinking about something lately that you might find interesting.Karl: (raises an eyebrow) Oh? And what might that be?Elon: The Simulation Hypothesis. You know, the idea that we could be living in a computer-generated reality.Karl: (sets down his wine glass) Oh, I’ve heard of that. It’s an intriguing concept. What are your thoughts on it?Elon: Well, if it’s true, then everything we know about the universe, about reality, about existence, could be just a bunch of code. It’s mind-boggling to think about the implications of that.Karl: (nodding) Indeed. It would mean that our understanding of the world, our struggles, our achievements, are all part of some grand simulation. It’s a challenging notion for someone like me, who has always focused on the material conditions of society."
 # public_discussions.add(documents=doc,ids="eins")
 # public_discussions2.add(documents=doc, ids="zwei")
