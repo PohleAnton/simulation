@@ -51,21 +51,15 @@ def collection_exists(chroma_client, collection_name):
 # if not collection_exists(chroma, "public_discussions"):
 try:
     # sowohl cosine als auch ip liefern deutlich bessere ergebnisse als l2
-    public_discussions = chroma.create_collection(name="public_discussions", embedding_function=openai_ef)
-
-    public_discussions4 = chroma.create_collection(name="public_discussions4", metadata={"hnsw:space": "cosine"},
-                                                   embedding_function=openai_ef)
-
-    public_discussions5 = chroma.create_collection(name="public_discussions5", metadata={"hnsw:space": "ip"},
-                                                   embedding_function=openai_ef)
+    public_discussions = chroma.create_collection(name="public_discussions", metadata={"hnsw:space": "ip"},
+                                                  embedding_function=openai_ef)
 except Exception:
-    public_discussions = chroma.get_collection(name="public_discussions")
+    public_discussions = chroma.get_collection(name="public_discussions", embedding_function=openai_ef)
     theme_count = public_discussions.count()
     if theme_count > 0:
         themes = public_discussions.query(query_texts="any", n_results=theme_count)
         if 'metadatas' in themes:
             for item in themes['metadatas']:
-                print(item[0]['theme'])
                 if isinstance(item, list):
                     for sub_item in item:
                         if 'theme' in sub_item:
@@ -119,6 +113,20 @@ criteria_prompt = ("Assume 2 people are having an intense intellectual conversat
 strategies_prompt = ("What strategies might one pick to form a convincing argument?")
 
 functions = [
+    {
+        "name": "remove_name",
+        "description": "a function that searches a given_text for a given_name and rewrites the passages containing that name in first person",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "description": "The rewritten text, where every passage containing the given_name has been rewritten using first-person pronouns only"
+                },
+            },
+            "required": ["given_text", "given_name"]
+        }
+    },
     {
         "name": "score_conviction_answer_question",
         "description": "A function that answers a question based on a conviction and scores the strength of that conviction",
@@ -243,11 +251,11 @@ functions = [
             "properties": {
                 "argument": {
                     "type": "string",
-                    "description": "An argument someone might make to convince somebody of the truth or importance of the subject"
+                    "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategy", "conviction", "prior discussion", "topic"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     },
     {
@@ -258,11 +266,11 @@ functions = [
             "properties": {
                 "argument": {
                     "type": "string",
-                    "description": "An argument someone might make to convince somebody of the a certain idea is false."
+                    "description": "An argument a speaker might make to convince somebody of the a certain idea is false."
                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategy", "conviction", "prior discussion", "topic"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     }
 ]
@@ -626,7 +634,6 @@ def extract_topics_of_conversation(given_conversation, participants_list):
                 )
                 if 'yes' in judge['choices'][0]['message']['content'].lower():
                     theme['theme'] = prior_topic
-                    break
             conversation_topics.append(theme['theme'])
             chroma_ids.append(start_number)
             start_number += 1
@@ -727,7 +734,7 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_argument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
+                 "content": f"form_argument from {speaker} using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_argument'}
@@ -738,7 +745,7 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_counterargument using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
+                 "content": f"form_counterargument from {speaker} using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_counterargument'}
@@ -769,6 +776,7 @@ def judge_concivtion(participant, topic):
     response = judge['choices'][0]['message']['content']
     return response
 
+
 ##deprecated
 def score_conviction(participant, topic):
     iss = public_discussions.get(where={'theme': topic})
@@ -783,6 +791,8 @@ def score_conviction(participant, topic):
         ]
     )
     return judge['choices'][0]['message']['content']
+
+
 ##deprecated
 def score_conviction_2(participant, topic):
     iss = public_discussions.get(where={'theme': topic})
@@ -823,20 +833,22 @@ def score_conviction_and_answer(participant, topic):
 
 def flip_conviction(participant, topic):
     conviction = get_latest_conviction(participant, topic)
-    #hier nun der Failsafe: Um die Präsentation interessant zu gestalten, soll sichergestellt werden, dass zu Beginn nicht alle die gleiche überzeugung haben.
+    # hier nun der Failsafe: Um die Präsentation interessant zu gestalten, soll sichergestellt werden, dass zu Beginn nicht alle die gleiche überzeugung haben.
     result = openai.ChatCompletion.create(
         model=model,
         messages=[
-            {"role": "user", "content": f"Consider this conviction: {conviction}. Write a text that expresses the opposite opinion.Use first-person pronouns only without any reference to other individuals.  Radical, emotional and subjective."}
+            {"role": "user",
+             "content": f"Consider this conviction: {conviction}. Write a text that expresses the opposite opinion.Use first-person pronouns only without any reference to other individuals.  Radical, emotional and subjective."}
         ]
     )
     update_conviction(participant, topic, result['choices'][0]['message']['content'])
     return result['choices'][0]['message']['content']
 
+
 def flip_needed(particants_list, topic):
     both_yes = True
     both_no = True
-    answers=[]
+    answers = []
     for particant in particants_list:
         answer, score = score_conviction_and_answer(particant, topic)
         answers.append(answer)
@@ -850,11 +862,12 @@ def flip_needed(particants_list, topic):
     else:
         return False
 
+
 def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     globals()[collection_name].add(documents=new_conviction, metadatas={'theme': topic},
-                                                         ids=topic + timestamp_string)
+                                   ids=topic + timestamp_string)
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
@@ -911,7 +924,7 @@ def make_first_person(conviction):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"rewrite this text using first-person pronouns only without any references to other individuals or third-person statements: {conviction}. Radical, emotional, subjective"
+                 "content": f"rewrite this text: {conviction} using first-person pronouns only without any references to other individuals or third-person statements, remove such references if necessary and write it as their own. Radical, emotional, subjective"
                  }
             ]
         )
@@ -919,8 +932,28 @@ def make_first_person(conviction):
     return conviction
 
 
-def next_conversation(given_chosen_topic=""):
+def fix_third_person(given_name, given_text):
+    # note: das wirkt sehr ähnlich zu make_first_person, löst aber ein anderes problem: wenn aus dem memory stream geschöpft wird, kommt auch der name des damaligen sprechers mit
+    # und zwar auch, wenn es erneut der selbe sprecher - dies führt zuweilen dazu, dass Personen von sich selbst in der 3. Person sprechen
+    res = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "user",
+             "content": f"remove_name {given_name} from {given_text} "
+             }
+        ],
+        functions=functions,
+        function_call={'name': 'remove_name'}
+    )
+    result = json.loads(res["choices"][0]["message"]["function_call"]["arguments"])
+    res = result['result']
+    return res
+
+
+def next_conversation(participants_list, given_chosen_topic=""):
     flip = flip_needed(participants_list, given_chosen_topic)
+    participants = ', '.join(participants_list)
+    issue = get_yes_or_no(given_chosen_topic)
     while flip:
         flip_conviction(random.choice[participants_list])
         flip = flip_needed(participants_list, given_chosen_topic)
@@ -947,38 +980,34 @@ def next_conversation(given_chosen_topic=""):
         for speaker in pros:
             start_number = public_discussions.count() + 1
             speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', participants_list)
+            speaker_argument = fix_third_person(speaker, speaker_argument)
+            #das ist das, womit der participant überzeugen will:
             print(speaker_argument)
-            # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen
-            # for listener in contras:
-            #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-            #     print(new_listener_conviction)
-            # public_discussions.add(documents=speaker_argument, ids=str(start_number),
-            #                        metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                   'participants': participants_list})
-            # public_discussions4.add(documents=speaker_argument, ids=str(start_number),
-            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                    'participants': participants_list})
-            # public_discussions5.add(documents=speaker_argument, ids=str(start_number),
-            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                    'participants': participants_list})
+            public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                   metadatas={'theme': given_chosen_topic, 'issue': issue,
+                                              'participants': participants})
+
+        # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
+        # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
+            for listener in contras:
+                new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+                #print(new_listener_conviction)
 
         for listener in contras:
             if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
                 contras.remove(listener)
                 pros.append(listener)
+        for listener in contras:
             listener_argument = form_argument(listener, given_chosen_topic, 'no', participants_list)
+            listener_argument = fix_third_person(listener, listener_argument)
+            public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                   metadatas={'theme': given_chosen_topic, 'issue': issue,
+                                              'participants': participants})
+            #das tatsächliche gegenargument
             print(listener_argument)
-            # for speaker in pros:
-            #     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
-            # public_discussions.add(documents=speaker_argument, ids=str(start_number),
-            #                        metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                   'participants': participants_list})
-            # public_discussions4.add(documents=speaker_argument, ids=str(start_number),
-            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                    'participants': participants_list})
-            # public_discussions5.add(documents=speaker_argument, ids=str(start_number),
-            #                         metadatas={'theme': given_chosen_topic, 'issue': get_yes_or_no(given_chosen_topic),
-            #                                    'participants': participants_list})
+            for speaker in pros:
+                new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
+
         for speaker in pros:
             if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
                 pros.index(speaker)
@@ -1045,7 +1074,7 @@ def start_first_conversation():
 
 
 ##ToDo for testing only
-given_chosen_topic = 'simulation hypothesis'
+given_chosen_topic = 'The simulation hypothesis'
 given_chosen_topic = 'liberation and equality'
 eins = public_discussions.query(query_texts=given_chosen_topic)
 public_discussions4.add(documents=eins['documents'][0][0], ids="eins")
@@ -1053,9 +1082,9 @@ zwei = public_discussions4.query(query_texts=given_chosen_topic)
 public_discussions5.add(documents=eins['documents'][0][0], ids="eins")
 drei = public_discussions5.query(query_texts=given_chosen_topic)
 
-karl = get_latest_conviction('Karl Marx', test_topic)
+karl = get_latest_conviction('Karl Marx', given_chosen_topic)
 karl = make_first_person(karl)
-elon = get_latest_conviction('Elon Musk', test_topic)
+elon = get_latest_conviction('Elon Musk', given_chosen_topic)
 k_s = score_conviction_2('Karl Marx', given_chosen_topic)
 e_s = score_conviction_2('Elon Musk', given_chosen_topic)
 
@@ -1065,7 +1094,11 @@ test_question = 'Is capitalism good?'
 write_conviction_collection('Elon Musk', test_topic)
 print('fertig')
 
-t =score_conviction_and_answer('Karl Marx', given_chosen_topic)[0]
+test = fix_third_person('Elon Musk', speaker_argument)
+
+t = score_conviction_and_answer('Karl Marx', given_chosen_topic)
+tt = score_conviction_and_answer('Elon Musk', given_chosen_topic)
+
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
 # while all_on_board or all_against:

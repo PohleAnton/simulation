@@ -17,8 +17,9 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-#chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+# chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+
 
 @st.cache
 def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name):
@@ -55,29 +56,50 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
     return points
 
+
 @st.cache
 def get_or_create_collection(client, collection_name, embedding_function=None):
     try:
-        return client.get_collection(name=collection_name)
+        if embedding_function:
+            return client.get_collection(name=collection_name, embedding_function=embedding_function)
+        else:
+            return client.get_collection(name=collection_name)
     except Exception as e:
         if embedding_function:
-            return client.create_collection(name=collection_name, embedding_function=embedding_function)
+            return client.create_collection(name=collection_name, embedding_function=embedding_function,
+                                            metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
+
+
+##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
+##ToDo Vielleicht kann das ja "irgendjemand" recherchieren
+if 'collections' not in st.session_state:
+    st.session_state['collections'] = {}
+
+
+def get_or_create_collection_with_session(client, collection_name, embedding_function=None):
+    key = f"collection_{collection_name}"
+    if key not in st.session_state['collections']:
+        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, embedding_function)
+    return st.session_state['collections'][key]
 
 
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
 
+
 def append_to_chat(role, content):
     """ Fügt eine Nachricht dem Chatverlauf hinzu """
     st.session_state['chat_history'].append({'role': role, 'content': content})
+
 
 def display_chat():
     """ Zeigt den gesamten Chatverlauf an """
     for message in st.session_state['chat_history']:
         with st.chat_message(message['role']):
             st.markdown(message['content'])
+
 
 def handle_user_input(user_input, participants_list):
     # Füge die Benutzereingabe dem Chatverlauf hinzu
@@ -95,11 +117,6 @@ def handle_user_input(user_input, participants_list):
     display_chat()
 
 
-
-public_discussions = get_or_create_collection(chroma, "public_discussions", openai_ef)
-participant_collection = get_or_create_collection(chroma, "participants")
-prior_themes_collection = get_or_create_collection(chroma, "prior_themes_collection")
-
 # Initialisierung von Streamlit-State-Variablen
 if 'first_finished' not in st.session_state:
     st.session_state['first_finished'] = False
@@ -109,18 +126,31 @@ if 'all_on_board' not in st.session_state:
     st.session_state['all_on_board'] = False
 if 'all_against' not in st.session_state:
     st.session_state['all_against'] = False
+if 'theme_count' not in st.session_state:
+    st.session_state['theme_count'] = None
 
-# Laden von Themen in st.session_state['all_topics']
-if prior_themes_collection:
-    theme_count = prior_themes_collection.count()
-    if theme_count > 0:
-        themes = prior_themes_collection.query(query_texts="any", n_results=theme_count)
+#
+# ##ToDo @Pauline: Bist dir sicher, dass das so richtig ist?
+# public_discussions = get_or_create_collection(chroma, "public_discussions", openai_ef)
+# participant_collection = get_or_create_collection(chroma, "participants")
+
+
+##ToDo @Pauline: Ich glaube, es ist so:
+public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", openai_ef)
+participant_collection = get_or_create_collection_with_session(chroma, "participants")
+
+if st.session_state['theme_count'] is None:
+    st.session_state['theme_count'] = public_discussions.count()
+    if st.session_state['theme_count'] > 0:
+        themes = public_discussions.query(query_texts="any", n_results=st.session_state['theme_count'])
         if 'metadatas' in themes:
             for item in themes:
                 if isinstance(item, list):
                     for sub_item in item:
                         if 'theme' in sub_item:
                             st.session_state['all_topics'].append(sub_item['theme'])
+
+
 
 criteria_prompt = ("Assume 2 people are having an intense intellectual conversation about a controversial topic. "
                    "Both of them start out with a strong conviction. Both are capable of changing their mind gradually. "
@@ -131,6 +161,38 @@ strategies_prompt = ("What strategies might one pick to form a convincing argume
 
 functions = [
     {
+        "name": "remove_name",
+        "description": "a function that searches a given_text for a given_name and rewrites the passages containing that name in first person",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "description": "The rewritten text, where every passage containing the given_name has been rewritten using first-person pronouns only"
+                },
+            },
+            "required": ["given_text", "given_name"]
+        }
+    },
+    {
+        "name": "score_conviction_answer_question",
+        "description": "A function that answers a question based on a conviction and scores the strength of that conviction",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "The answer to the question based on the conviction. Yes or no only"
+                },
+                "score": {
+                    "type": "number",
+                    "description": "On a scale from 1 to 100, where 1 means 'not convinced at all' and 100 means 'absolutely convinced without any doubt', how strong is this conviction?"
+                },
+            },
+            "required": ["conviction", "question"]
+        }
+    },
+    {
         "name": "extract_core_issue",
         "description": "A function that identifies the core question of topic and poses the appropriate Yes-Or-No Question",
         "parameters": {
@@ -138,7 +200,7 @@ functions = [
             "properties": {
                 "core_issue": {
                     "type": "string",
-                    "description": "The Yes-Or-No Question at the heart of the topic"
+                    "description": "The Yes-Or-No Question at the heart of the topic. As short as possible"
                 }
             },
             "required": ["topic"]
@@ -209,7 +271,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Use first-person pronouns only, Inner most believe of a participant about a subject. Radical, emotional and subjective. Do not mention the name of the participant"
+                    "description": "Use first-person pronouns only without any reference to other individuals. Inner most believe of a participant about a subject. Radical, emotional and subjective."
                 }
             }
         }
@@ -222,7 +284,7 @@ functions = [
             "properties": {
                 "conviction": {
                     "type": "string",
-                    "description": "Use first-person pronouns only,. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle. Do not mention the name of the participant"
+                    "description": "Use first-person pronouns only without any reference to other individuals. New description of inner most thoughts about a subject. Based on prior conviction and arguments. Can be more nuanced and subtle."
                 }
             },
             "required": ["participant", "subject", "prior conviction", "arguments"]
@@ -236,11 +298,11 @@ functions = [
             "properties": {
                 "argument": {
                     "type": "string",
-                    "description": "An argument someone might make to convince somebody of the truth or importance of the subject"
+                    "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategy", "conviction", "prior discussion", "topic"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     },
     {
@@ -251,11 +313,11 @@ functions = [
             "properties": {
                 "argument": {
                     "type": "string",
-                    "description": "An argument someone might make to convince somebody of the a certain idea is false."
+                    "description": "An argument a speaker might make to convince somebody of the a certain idea is false."
                                    "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategy", "conviction", "prior discussion", "topic"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     }
 ]
@@ -301,7 +363,8 @@ def join_profiles(participants):
         profiles_of_participants += "\n\n"
     return profiles_of_participants
 
-#vorerst deprecated. bleibt hier. safety first
+
+# vorerst deprecated. bleibt hier. safety first
 # def compare_themes(prior_topic, new_topics):
 #
 #     updated_topics = []
@@ -340,7 +403,6 @@ def get_gpt_response_with_function(content, functions):
         st.error(f"Fehler beim Abrufen der GPT-Antwort mit Funktionen: {e}")
         logging.error(f"Fehler beim Abrufen der GPT-Antwort mit Funktionen: {e}")
         return None
-
 
 
 def extract_timestamp(s):
@@ -483,7 +545,6 @@ def find_core_issues(topic):
         return None
 
 
-
 # Sucht sich die Themen der Conversation zusammen
 @st.cache
 def extract_topics_of_conversation(given_conversation):
@@ -531,10 +592,10 @@ def extract_topics_of_conversation(given_conversation):
 
     if not st.session_state['first_finished']:
         for theme in new_data["themes"]:
-            #das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
-            #Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
-            #zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
-            #beim entwickeln vermiedern werden
+            # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
+            # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
+            # zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
+            # beim entwickeln vermiedern werden
             for prior_topic in st.session_state['all_topics']:
                 judge = openai.ChatCompletion.create(
                     model=model,
@@ -547,7 +608,6 @@ def extract_topics_of_conversation(given_conversation):
                 )
                 if 'yes' in judge['choices'][0]['message']['content'].lower():
                     theme['theme'] = prior_topic
-                    break
             conversation_topics.append(theme['theme'])
             chroma_ids.append(start_number)
             start_number += 1
@@ -560,14 +620,12 @@ def extract_topics_of_conversation(given_conversation):
 
         return conversation_topics
 
-        #notiz: es gab hier noch einen block
-        #if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
-
-
+        # notiz: es gab hier noch einen block
+        # if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
 
 
 def add_knowledge_to_profile(participant, given_topics):
-    #ist ein Überbleibsel aus komplexerem Code,.
+    # ist ein Überbleibsel aus komplexerem Code,.
     for topic in given_topics:
         write_conviction_collection(participant, topic)
 
@@ -666,7 +724,6 @@ def judge_concivtion(participant, topic):
         return f"An error occurred: {str(e)}"
 
 
-
 def score_conviction(participant, topic):
     try:
         iss = public_discussions.get(where={'theme': topic})
@@ -691,7 +748,6 @@ def score_conviction(participant, topic):
         return f"An error occurred: {str(e)}"
 
 
-
 def update_conviction(participant, topic, new_conviction):
     if not new_conviction or not topic:
         return "Conviction or topic cannot be empty."
@@ -706,7 +762,6 @@ def update_conviction(participant, topic, new_conviction):
         return f"Conviction updated for {participant} on topic '{topic}'."
     except Exception as e:
         return f"An error occurred while updating conviction: {str(e)}"
-
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
@@ -735,7 +790,6 @@ def argument_vs_conviction(argument, listener, chosen_topic):
         return ans
     except Exception as e:
         return f"Ein Fehler ist aufgetreten: {str(e)}"
-
 
 
 def lets_goooooo(participants, chosen_topic):
@@ -798,16 +852,19 @@ def classify_participants(participants, topic):
             contras.append(participant)
     return pros, contras
 
+
 def update_discussions_and_convictions(argument, listeners, topic, stance):
     for listener in listeners:
         new_conviction = argument_vs_conviction(argument, listener, topic)
         update_conviction(listener, topic, new_conviction)
         add_argument_to_public_discussions(argument, topic, stance)
 
+
 def add_argument_to_public_discussions(argument, topic, stance):
     start_number = public_discussions.count() + 1
     public_discussions.add(documents=argument, ids=str(start_number),
                            metadatas={'theme': topic, 'issue': get_yes_or_no(topic), 'stance': stance})
+
 
 def update_positions(pros, contras, topic):
     updated_pros = pros[:]
@@ -825,12 +882,14 @@ def update_positions(pros, contras, topic):
 
     return updated_pros, updated_contras
 
+
 def handle_conversation_outcome(loop_counter):
     if loop_counter < 4:
         print('Ergebnis der Konversation wurde innerhalb von 4 Durchläufen erreicht.')
         # Weitere Logik hier, falls nötig
     else:
         print('Keine Einigung nach 4 Durchläufen.')
+
 
 def next_conversation(participants_list, given_chosen_topic=""):
     loop_counter = 0
@@ -840,7 +899,8 @@ def next_conversation(participants_list, given_chosen_topic=""):
         loop_counter += 1
         process_arguments(pros, contras, given_chosen_topic)
         pros, contras = update_positions(pros, contras, given_chosen_topic)
-        st.session_state['all_on_board'], st.session_state['all_against'] = lets_goooooo(participants_list, given_chosen_topic)
+        st.session_state['all_on_board'], st.session_state['all_against'] = lets_goooooo(participants_list,
+                                                                                         given_chosen_topic)
 
     handle_conversation_outcome(loop_counter)
 
@@ -850,8 +910,6 @@ def process_arguments(pros, contras, topic):
         for participant in group:
             argument = form_argument(participant, topic, stance)
             update_discussions_and_convictions(argument, contras if stance == 'yes' else pros, topic, stance)
-
-
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -940,7 +998,5 @@ with st.chat_message("assistant"):
 
 if user_input_prompt := st.chat_input("Enter here..."):
     handle_user_input(user_input_prompt, participants_list)
-
-
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
