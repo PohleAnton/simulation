@@ -17,8 +17,10 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-ada-002"
 )
 
-# chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
-chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
+
+
+# chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
 def reset_session_state():
@@ -61,29 +63,25 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
     return points
 
 
-def get_or_create_collection(client, collection_name, embedding_function=None):
+def get_or_create_collection(client, collection_name, selector):
     try:
-        if embedding_function:
-            return client.get_collection(name=collection_name, embedding_function=embedding_function)
-        else:
-            return client.get_collection(name=collection_name)
+        return client.get_collection(name=collection_name)
     except Exception as e:
-        if embedding_function:
-            return client.create_collection(name=collection_name, embedding_function=embedding_function,
-                                            metadata={"hnsw:space": "ip"})
+        if selector == 1:
+            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
 
 
-def get_or_create_collection_with_session(client, collection_name, embedding_function=None):
+def get_or_create_collection_with_session(client, collection_name, selector=2):
     key = f"collection_{collection_name}"
     if key not in st.session_state['collections']:
-        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, embedding_function)
+        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, selector)
     else:
         # Sammlung bereits im Session-State, aktualisiere ihre Informationen
         try:
             # Versuche, den aktuellen Zustand der Sammlung zu erhalten
-            updated_collection = client.get_collection(name=collection_name, embedding_function=embedding_function)
+            updated_collection = client.get_collection(name=collection_name)
             st.session_state['collections'][key] = updated_collection
         except Exception as e:
             st.error(f"Fehler beim Aktualisieren der Sammlungsinformationen: {e}")
@@ -97,10 +95,10 @@ if 'collections' not in st.session_state:
     st.session_state['collections'] = {}
 
 
-def get_or_create_collection_with_session(client, collection_name, embedding_function=None):
+def get_or_create_collection_with_session(client, collection_name, selector):
     key = f"collection_{collection_name}"
     if key not in st.session_state['collections']:
-        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, embedding_function)
+        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, selector)
     return st.session_state['collections'][key]
 
 
@@ -153,9 +151,13 @@ if 'all_against' not in st.session_state:
 if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
 
+##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
+if not 'first_run' in st.session_state:
+    st.session_state['first_run'] = False
+
 ##ToDo @Pauline: Ich glaube, es ist so:
-public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", openai_ef)
-participant_collection = get_or_create_collection_with_session(chroma, "participants")
+public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", 1)
+participant_collection = get_or_create_collection_with_session(chroma, "participants", 2)
 
 if st.session_state['theme_count'] is None:
     st.session_state['theme_count'] = public_discussions.count()
@@ -482,7 +484,7 @@ def write_conviction_collection(participant, topic, arguments=''):
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Überprüfe, ob die Sammlung existiert und hole die letzte Überzeugung
-    collection = get_or_create_collection_with_session(chroma, collection_name)
+    collection = get_or_create_collection_with_session(chroma, collection_name, 2)
     conv = get_latest_conviction(participant, topic)
 
     if conv == '' or arguments != '':
@@ -527,7 +529,7 @@ def safety_conviction(participant, topic):
         final = make_first_person(res_json['conviction'])  # Sicherstellen, dass es in erster Person ist
 
         # Verwende get_or_create_collection für Konsistenz
-        conviction_collection = get_or_create_collection_with_session(chroma, collection_name)
+        conviction_collection = get_or_create_collection_with_session(chroma, collection_name, 2)
         conviction_collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
     except (KeyError, json.JSONDecodeError) as e:
         print(f"Fehler bei der Erstellung der Überzeugung für {participant} zum Thema {topic}: {e}")
@@ -836,7 +838,7 @@ def update_conviction(participant, topic, new_conviction):
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    collection = get_or_create_collection_with_session(chroma, collection_name)
+    collection = get_or_create_collection_with_session(chroma, collection_name, 2)
 
     try:
         collection.add(documents=new_conviction, metadatas={'theme': topic}, ids=topic + timestamp_string)
@@ -1136,16 +1138,16 @@ def start_first_conversation():
 
 # --------------------------------------- Steamlit ab hier ---------------------------------------
 
-def start_conversation(participants_list):
+def start_conversation():
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        first_conv_str, extracted_topics = start_first_conversation(participants_list)
+        first_conv_str, extracted_topics = start_first_conversation()
         message_placeholder.markdown(first_conv_str)
 
 
 def handle_user_input(user_input, participants_list):
     if user_input.lower() == "start":
-        start_conversation(participants_list)
+        start_conversation()
     elif user_input.lower() == "end":
         end_conversation()  # Eine Funktion, die definiert, was bei "End" passieren soll
     else:
