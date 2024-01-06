@@ -56,7 +56,6 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
     return points
 
-
 @st.cache
 def get_or_create_collection(client, collection_name, embedding_function=None):
     try:
@@ -70,6 +69,22 @@ def get_or_create_collection(client, collection_name, embedding_function=None):
                                             metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
+
+def get_or_create_collection_with_session(client, collection_name, embedding_function=None):
+    key = f"collection_{collection_name}"
+    if key not in st.session_state['collections']:
+        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, embedding_function)
+    else:
+        # Sammlung bereits im Session-State, aktualisiere ihre Informationen
+        try:
+            # Versuche, den aktuellen Zustand der Sammlung zu erhalten
+            updated_collection = client.get_collection(name=collection_name, embedding_function=embedding_function)
+            st.session_state['collections'][key] = updated_collection
+        except Exception as e:
+            st.error(f"Fehler beim Aktualisieren der Sammlungsinformationen: {e}")
+
+    return st.session_state['collections'][key]
+
 
 
 ##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
