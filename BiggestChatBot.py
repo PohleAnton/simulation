@@ -1198,7 +1198,8 @@ with st.chat_message("assistant"):
                 "Geben Sie ein Thema ein, um das Gespräch fortzusetzen, "
                 "und \"End\", um das Gespräch zu beenden.")
 
-if user_input_prompt := st.chat_input("Enter here..."):
-    handle_user_input(user_input_prompt, participants_list)
+if user_input_prompt := st.chat_input("Enter anything here..."):
+    # handle_user_input(user_input_prompt, participants_list)
+    start_conversation()
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
