@@ -39,5 +39,13 @@ Dies ist der Versuch mittels Prompts die Konversation so zu lenken, dass am Ende
 
 Das Ganze ist von semi-optimalem Erfolg gekrönt. Zwar kann in einigen Fällen ein Teilnehmer von einem anderen überzeugt werden, jedoch nur durch die explizite Anweisung im Prompt, dass eben das passieren soll. Zudem ist das Endergebnis nicht wirklich eine Meinungsänderung über eine tiefgründige Überzeugung, sondern eher eine Akzeptanz für andere Dinge mit dem Hinweis "Ja, du hast recht, so hab ich das nicht gesehen, aber ...".
 
-# ChatBot.py
-In der Datei wird mittels Streamlit ein Frontend bereitgestellt, dass den Nutzer hübsch übersichtlich mit dem Programm interagieren lässt und ihm die wichtigsten Dinge im Ablauf als CHat-Nachrichten ausgibt. Zwischendurch kann der User zufällige Themen einstreuen, die dann für die nächste Konversastion aufgegriffen werden sollen.
+# ChatBot.py + BiggerChatBot.py
+In der Datei `ChatBot.py` wird versucht mittels Streamlit ein Frontend bereitzustellen, sodass der Nutzer hübsch übersichtlich mit dem Programm interagieren kann und ihm die wichtigsten Dinge im Ablauf als Chat-Nachrichten ausgibt. Zwischendurch sollte der User zufällige Themen einstreuen können, die dann für die nächste Konversastion aufgegriffen werden sollen. Nach kurzer Bearbeitungszeit wurde daraus die Datei `BiggerChatBot.py` abgeleitet und mit Herrn Pohles BE Code gefüllt. Ich habe dann weiter an der FE Umsetzung mit Streamlit gearbeitet
+
+```
+message_placeholder = st.empty()
+
+for topic in extracted_topics:
+    if st.button(topic):
+    next_conversation(participants_list, topic)
+```
