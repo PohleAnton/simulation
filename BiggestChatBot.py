@@ -117,19 +117,25 @@ def display_chat():
 
 
 def handle_user_input(user_input, participants_list):
-    # Füge die Benutzereingabe dem Chatverlauf hinzu
+    # Aktualisiere die Teilnehmerliste aus st.session_state
+    if 'participants_list' in st.session_state:
+        participants_list = st.session_state['participants_list']
+
     append_to_chat("user", user_input)
 
     if user_input.lower() == "start":
+        # Überprüfe und aktualisiere notwendige Daten vor dem Start
+        st.session_state['chat_history'] = []
         start_conversation(participants_list)
     elif user_input.lower() == "end":
         end_conversation()
-        return  # Beendet die Interaktion
     else:
-        next_conversation(user_input, participants_list)
+        next_conversation(participants_list, user_input)
 
-    # Zeigt den aktualisierten Chatverlauf an
     display_chat()
+
+    st.session_state['participants_list'] = participants_list
+
 
 
 # Initialisierung von Streamlit-State-Variablen
