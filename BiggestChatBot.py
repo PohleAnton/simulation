@@ -1018,88 +1018,97 @@ def handle_conversation_outcome(loop_counter):
         print('Keine Einigung nach 4 Durchläufen.')
 
 
-def next_conversation(participants_list, given_chosen_topic=""):
-    # Aktualisiere die Zustände aus st.session_state
-    all_on_board = st.session_state.get('all_on_board', False)
-    all_against = st.session_state.get('all_against', False)
+def next_conversation(given_participants_list, given_chosen_topic=""):
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        # Aktualisiere die Zustände aus st.session_state
+        all_on_board = st.session_state.get('all_on_board', False)
+        all_against = st.session_state.get('all_against', False)
 
-    flip = flip_needed(participants_list, given_chosen_topic)
-    participants = ', '.join(participants_list)
-    issue = get_yes_or_no(given_chosen_topic)
-    while flip:
-        flip_conviction(random.choice(participants_list))
-        flip = flip_needed(participants_list, given_chosen_topic)
+        flip = flip_needed(given_participants_list, given_chosen_topic)
+        participants = ', '.join(given_participants_list)
+        issue = get_yes_or_no(given_chosen_topic)
+        while flip:
+            flip_conviction(random.choice(given_participants_list))
+            flip = flip_needed(given_participants_list, given_chosen_topic)
 
-    loop_counter = 0
-    pros = []
-    contras = []
-    while not all_on_board and not all_against:
-        loop_counter += 1
-        randomizer = list(participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
+        loop_counter = 0
+        pros = []
+        contras = []
+        while not all_on_board and not all_against:
+            loop_counter += 1
+            randomizer = list(given_participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
 
-        if loop_counter == 1:
-            for item in randomizer:
-                if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
-                    pros.append(item)
-                else:
-                    contras.append(item)
-                print('fertig')
-        for speaker in pros:
-            start_number = public_discussions.count() + 1
-            speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', participants_list)
-            speaker_argument = fix_third_person(speaker, speaker_argument)
-            # das ist das, womit der participant überzeugen will:
-            print(speaker_argument)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': issue,
-                                              'participants': participants})
-
-            # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
-            # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
-            for listener in contras:
-                new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-                # print(new_listener_conviction)
-
-        for listener in contras:
-            if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
-                contras.remove(listener)
-                pros.append(listener)
-        for listener in contras:
-            listener_argument = form_argument(listener, given_chosen_topic, 'no', participants_list)
-            listener_argument = fix_third_person(listener, listener_argument)
-            public_discussions.add(documents=speaker_argument, ids=str(start_number),
-                                   metadatas={'theme': given_chosen_topic, 'issue': issue,
-                                              'participants': participants})
-            # das tatsächliche gegenargument
-            print(listener_argument)
+            if loop_counter == 1:
+                for item in randomizer:
+                    if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
+                        pros.append(item)
+                    else:
+                        contras.append(item)
+                    print('fertig')
             for speaker in pros:
-                new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
+                start_number = public_discussions.count() + 1
+                speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
+                speaker_argument = fix_third_person(speaker, speaker_argument)
+                # das ist das, womit der participant überzeugen will:
+                message_placeholder.markdown(speaker_argument)
+                message_placeholder = st.empty()
+                public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                       metadatas={'theme': given_chosen_topic, 'issue': issue,
+                                                  'participants': participants})
 
-        for speaker in pros:
-            if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
-                pros.index(speaker)
-                contras.append(speaker)
+                # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
+                # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
+                for listener in contras:
+                    new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+                    # print(new_listener_conviction)
 
-        # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
-        # auftaucht) {argument}
-        new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+            for listener in contras:
+                if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
+                    contras.remove(listener)
+                    pros.append(listener)
+            for listener in contras:
+                listener_argument = form_argument(listener, given_chosen_topic, 'no', given_participants_list)
+                listener_argument = fix_third_person(listener, listener_argument)
+                public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                                       metadatas={'theme': given_chosen_topic, 'issue': issue,
+                                                  'participants': participants})
+                # das tatsächliche gegenargument
+                message_placeholder.markdown(listener_argument)
+                message_placeholder = st.empty()
+                for speaker in pros:
+                    new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
 
-        all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
+            for speaker in pros:
+                if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
+                    pros.index(speaker)
+                    contras.append(speaker)
 
-    # Aktualisiere st.session_state mit den neuen Zuständen
-    st.session_state['all_on_board'] = all_on_board
-    st.session_state['all_against'] = all_against
+            # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
+            # auftaucht) {argument}
+            new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-    if loop_counter < 4:
-        # video_path=''
-        print('magic')
-        if st.session_state['all_on_board']:
-            x = 0  # os.system("shutdown /s /t 1")
-        if st.session_state['all_against']:
-            print('')
-            # os.startfile(video_path)
-    else:
-        print('no magic')
+            all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
+
+        # Aktualisiere st.session_state mit den neuen Zuständen
+        st.session_state['all_on_board'] = all_on_board
+        st.session_state['all_against'] = all_against
+
+        if loop_counter < 4:
+            # video_path=''
+            print('magic')
+            message_placeholder.markdown("magic")
+            message_placeholder = st.empty()
+            if st.session_state['all_on_board']:
+                x = 0  # os.system("shutdown /s /t 1")
+                message_placeholder.markdown("All on board")
+            if st.session_state['all_against']:
+                print('')
+                message_placeholder.markdown("All against")
+                # os.startfile(video_path)
+        else:
+            print('no magic')
+            message_placeholder.markdown("finished, no magic")
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -1143,6 +1152,9 @@ def start_conversation():
         message_placeholder = st.empty()
         first_conv_str, extracted_topics = start_first_conversation()
         message_placeholder.markdown(first_conv_str)
+    for topic in extracted_topics:
+        if st.button(topic):
+            next_conversation(participants_list, topic)
 
 
 def handle_user_input(user_input, participants_list):
