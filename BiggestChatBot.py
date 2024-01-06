@@ -21,7 +21,11 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
-@st.cache
+def reset_session_state():
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+
+
 def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name):
     dir_name = './FilesForDocker'
     current_dir = Path(__file__).parent
@@ -56,7 +60,7 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
     return points
 
-@st.cache
+
 def get_or_create_collection(client, collection_name, embedding_function=None):
     try:
         if embedding_function:
@@ -69,6 +73,7 @@ def get_or_create_collection(client, collection_name, embedding_function=None):
                                             metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
+
 
 def get_or_create_collection_with_session(client, collection_name, embedding_function=None):
     key = f"collection_{collection_name}"
@@ -84,7 +89,6 @@ def get_or_create_collection_with_session(client, collection_name, embedding_fun
             st.error(f"Fehler beim Aktualisieren der Sammlungsinformationen: {e}")
 
     return st.session_state['collections'][key]
-
 
 
 ##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
@@ -137,7 +141,6 @@ def handle_user_input(user_input, participants_list):
     st.session_state['participants_list'] = participants_list
 
 
-
 # Initialisierung von Streamlit-State-Variablen
 if 'first_finished' not in st.session_state:
     st.session_state['first_finished'] = False
@@ -149,9 +152,6 @@ if 'all_against' not in st.session_state:
     st.session_state['all_against'] = False
 if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
-
-
-
 
 ##ToDo @Pauline: Ich glaube, es ist so:
 public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", openai_ef)
@@ -167,8 +167,6 @@ if st.session_state['theme_count'] is None:
                     for sub_item in item:
                         if 'theme' in sub_item:
                             st.session_state['all_topics'].append(sub_item['theme'])
-
-
 
 criteria_prompt = ("Assume 2 people are having an intense intellectual conversation about a controversial topic. "
                    "Both of them start out with a strong conviction. Both are capable of changing their mind gradually. "
@@ -538,7 +536,6 @@ def safety_conviction(participant, topic):
     # globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
-
 def find_core_issues(topic):
     try:
         response = openai.ChatCompletion.create(
@@ -564,7 +561,6 @@ def find_core_issues(topic):
 
 
 # Sucht sich die Themen der Conversation zusammen
-@st.cache
 def extract_topics_of_conversation(given_conversation):
     conversation_topics = []
     chroma_metadatas = []
@@ -572,7 +568,6 @@ def extract_topics_of_conversation(given_conversation):
     chroma_ids = []
     sorted_list = sorted(participants_list)
     participants = ', '.join(sorted_list)
-
 
     # zum token sparen wird mitunter direkt string übergeben:
     if isinstance(given_conversation, str):
@@ -720,7 +715,7 @@ def get_prior_discussion(topic, participants_list):
     combined_string = "\n".join(r) if len(r) > 1 else r[0]
     return combined_string
 
-@st.cache
+
 def get_convincing_factors():
     # consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
     # step back prompted, file will exist
@@ -785,8 +780,6 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
     return argument
 
 
-
-
 def judge_concivtion(participant, topic):
     try:
         iss = public_discussions.get(where={'theme': topic})
@@ -810,7 +803,6 @@ def judge_concivtion(participant, topic):
         return judge['choices'][0]['message']['content']
     except Exception as e:
         return f"An error occurred: {str(e)}"
-
 
 
 def score_conviction(participant, topic):
@@ -837,7 +829,6 @@ def score_conviction(participant, topic):
         return f"An error occurred: {str(e)}"
 
 
-
 def update_conviction(participant, topic, new_conviction):
     if not new_conviction or not topic:
         return "Conviction or topic cannot be empty."
@@ -852,7 +843,6 @@ def update_conviction(participant, topic, new_conviction):
         return f"Conviction updated for {participant} on topic '{topic}'."
     except Exception as e:
         return f"An error occurred while updating conviction: {str(e)}"
-
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
@@ -883,7 +873,6 @@ def argument_vs_conviction(argument, listener, chosen_topic):
         return f"Ein Fehler ist aufgetreten: {str(e)}"
 
 
-
 def lets_goooooo(participants, chosen_topic):
     all_on_board = True
     all_against = True
@@ -905,7 +894,6 @@ def lets_goooooo(participants, chosen_topic):
             return False, False
 
     return all_on_board, all_against
-
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
@@ -988,6 +976,7 @@ def flip_needed(particants_list, topic):
     else:
         return False
 
+
 def reset_convictions(participants_list):
     for participant in participants_list:
         collection_name = participant.replace(' ', '') + 'Conviction'
@@ -1027,7 +1016,6 @@ def handle_conversation_outcome(loop_counter):
         print('Keine Einigung nach 4 Durchläufen.')
 
 
-
 def next_conversation(participants_list, given_chosen_topic=""):
     # Aktualisiere die Zustände aus st.session_state
     all_on_board = st.session_state.get('all_on_board', False)
@@ -1058,17 +1046,17 @@ def next_conversation(participants_list, given_chosen_topic=""):
             start_number = public_discussions.count() + 1
             speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', participants_list)
             speaker_argument = fix_third_person(speaker, speaker_argument)
-            #das ist das, womit der participant überzeugen will:
+            # das ist das, womit der participant überzeugen will:
             print(speaker_argument)
             public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                    metadatas={'theme': given_chosen_topic, 'issue': issue,
                                               'participants': participants})
 
-        # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
-        # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
+            # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
+            # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
             for listener in contras:
                 new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-                #print(new_listener_conviction)
+                # print(new_listener_conviction)
 
         for listener in contras:
             if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
@@ -1080,7 +1068,7 @@ def next_conversation(participants_list, given_chosen_topic=""):
             public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                    metadatas={'theme': given_chosen_topic, 'issue': issue,
                                               'participants': participants})
-            #das tatsächliche gegenargument
+            # das tatsächliche gegenargument
             print(listener_argument)
             for speaker in pros:
                 new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
@@ -1110,7 +1098,6 @@ def next_conversation(participants_list, given_chosen_topic=""):
             # os.startfile(video_path)
     else:
         print('no magic')
-
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
