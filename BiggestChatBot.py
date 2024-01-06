@@ -1029,26 +1029,25 @@ def handle_conversation_outcome(loop_counter):
 
 
 def next_conversation(participants_list, given_chosen_topic=""):
+    # Aktualisiere die Zustände aus st.session_state
+    all_on_board = st.session_state.get('all_on_board', False)
+    all_against = st.session_state.get('all_against', False)
+
     flip = flip_needed(participants_list, given_chosen_topic)
     participants = ', '.join(participants_list)
     issue = get_yes_or_no(given_chosen_topic)
     while flip:
-        flip_conviction(random.choice[participants_list])
+        flip_conviction(random.choice(participants_list))
         flip = flip_needed(participants_list, given_chosen_topic)
-    global all_on_board
-    global all_against
 
     loop_counter = 0
     pros = []
     contras = []
     while not all_on_board and not all_against:
         loop_counter += 1
-        randomizer = []
-        # um nicht die ursprüngliche liste zu überschreiben:
+        randomizer = list(participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
+
         if loop_counter == 1:
-            for item in participants_list:
-                randomizer.append(item)
-            # falls es mehr als 2 participants gibt, werden diese in pro und contra sortiert:
             for item in randomizer:
                 if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
                     pros.append(item)
@@ -1097,6 +1096,10 @@ def next_conversation(participants_list, given_chosen_topic=""):
 
         all_on_board, all_against = lets_goooooo(participants_list, given_chosen_topic)
 
+    # Aktualisiere st.session_state mit den neuen Zuständen
+    st.session_state['all_on_board'] = all_on_board
+    st.session_state['all_against'] = all_against
+
     if loop_counter < 4:
         # video_path=''
         print('magic')
@@ -1107,11 +1110,6 @@ def next_conversation(participants_list, given_chosen_topic=""):
             # os.startfile(video_path)
     else:
         print('no magic')
-
-
-
-
-
 
 
 
