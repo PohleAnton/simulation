@@ -1025,6 +1025,7 @@ def handle_conversation_outcome(loop_counter):
 
 def next_conversation(given_participants_list, given_chosen_topic=""):
     with st.chat_message("assistant"):
+        st.markdown(f"DEBUG: nextConversation(participants : {given_participants_list}, topic : {given_chosen_topic})")
         message_placeholder = st.empty()
         # Aktualisiere die Zustände aus st.session_state
         all_on_board = st.session_state.get('all_on_board', False)
@@ -1034,6 +1035,8 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
         participants = ', '.join(given_participants_list)
         issue = get_yes_or_no(given_chosen_topic)
         while flip:
+            message_placeholder.markdown("DEBUG: nextConversation -> while flip")
+            message_placeholder = st.empty()  # just for Debug
             flip_conviction(random.choice(given_participants_list))
             flip = flip_needed(given_participants_list, given_chosen_topic)
 
@@ -1041,15 +1044,23 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
         pros = []
         contras = []
         while not all_on_board and not all_against:
+            message_placeholder.markdown("DEBUG: nextConversation -> while not all_on_board and not all_against")
+            message_placeholder = st.empty()  # just for Debug
             loop_counter += 1
             randomizer = list(given_participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
 
             if loop_counter == 1:
+                message_placeholder.markdown("DEBUG: nextConversation -> loop_counter = 1")
+                message_placeholder = st.empty()  # just for Debug
                 for item in randomizer:
                     if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
                         pros.append(item)
+                        message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = yes")
+                        message_placeholder = st.empty()  # just for Debug
                     else:
                         contras.append(item)
+                        message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = not yes")
+                        message_placeholder = st.empty()  # just for Debug
                     print('fertig')
             ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
             print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
@@ -1190,6 +1201,12 @@ participants_list = []
 # ...
 
 with st.sidebar:
+    st.title("💬 ConversationsBot")
+    st.write("With this program, you can make two selected individuals engage in a discussion. "
+             "They will try to persuade each other, and you can observe their interaction. "
+             "Simply input something into the chat to get started. "
+             "Afterwards, you can choose a topic from the first conversation "
+             "that will be focused on in the next iteration.\n")
     part_1 = st.text_input("First participant", "Elon Musk", key="part_1_input")
     part_2 = st.text_input("Second participant", "Karl Marx", key="part_2_input")
     if part_1 and part_2:
@@ -1203,12 +1220,7 @@ if "openai_model" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-with st.chat_message("assistant"):
-    st.markdown("Bitte geben Sie \"Start\" ein, um ein Gespräch zu beginnen. "
-                "Geben Sie ein Thema ein, um das Gespräch fortzusetzen, "
-                "und \"End\", um das Gespräch zu beenden.")
-
-if user_input_prompt := st.chat_input("Enter anything here..."):
+if st.button("Start first conversation", type="primary"):
     # handle_user_input(user_input_prompt, participants_list)
     start_conversation()
 
