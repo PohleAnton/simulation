@@ -20,8 +20,6 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 
 
-
-
 # chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
@@ -67,13 +65,14 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
 def get_or_create_collection(client, collection_name, selector):
     try:
-        if selector ==1:
+        if selector == 1:
             return client.get_collection(name=collection_name, embedding_function=openai_ef)
         else:
             return client.get_collection(name=collection_name)
     except Exception as e:
         if selector == 1:
-            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
+            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"},
+                                            embedding_function=openai_ef)
         else:
             return client.create_collection(name=collection_name)
 
@@ -702,9 +701,11 @@ def get_best_document(topic, participants_list, precise=False, precision=0.3):
     if precise:
         filtered_documents = []
         for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
+            document_participants_set = None
             if distance < precision:
                 filtered_documents.append(document)
                 document_participants_set = set(metadatas.get('participants').split(', '))
+                st.session_state["document_participants_set"] = document_participants_set
 
             if checker.issubset(document_participants_set):
                 final.append(document)
@@ -1064,9 +1065,18 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                         message_placeholder = st.empty()  # just for Debug
                     print('fertig')
             ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
-            print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
-            print(pros[0] + ' thinks yes')
-            print(contras[0] + ' is not convinced')
+            if len(participants_list) > 0:
+                print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
+            else:
+                print("participants_list ist kleiner als 0")
+            if len(pros) > 0:
+                print(pros[0] + ' thinks yes')
+            else:
+                print("no one thinks yes")
+            if len(contras) > 0:
+                print(contras[0] + ' is not convinced')
+            else:
+                print("no one is not convinced")
             ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
             for speaker in pros:
                 start_number = public_discussions.count() + 1
@@ -1218,7 +1228,10 @@ if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-3.5-turbo"
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
+"""
+if "counter" in st.session_state:
+    st.session_state.counter = 0
+"""
 if "counter" not in st.session_state:
     st.session_state["counter"] = 0
 
