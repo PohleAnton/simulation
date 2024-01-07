@@ -20,6 +20,8 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 
 
+
+
 # chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
@@ -65,10 +67,13 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
 def get_or_create_collection(client, collection_name, selector):
     try:
-        return client.get_collection(name=collection_name)
+        if selector ==1:
+            return client.get_collection(name=collection_name, embedding_function=openai_ef)
+        else:
+            return client.get_collection(name=collection_name)
     except Exception as e:
         if selector == 1:
-            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"})
+            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
         else:
             return client.create_collection(name=collection_name)
 
@@ -239,7 +244,7 @@ functions = [
     },
     {
         "name": "find_topics",
-        "description": "A function that finds broad subtitles for each theme that was brought up in a conversation. It limits the number of subtitles to four or fewer, ensuring they are broad and encompassing, while considering the entire text",
+        "description": "A function that finds broad subtitles for each theme that was brought up in a conversation. It tries to limit the number of subtitles to four or fewer, ensuring they are broad and encompassing, while considering the entire text",
         "parameters": {
             "type": "object",
             "properties": {
@@ -502,7 +507,7 @@ def write_conviction_collection(participant, topic, arguments=''):
         )
         result = res["choices"][0]["message"]["function_call"]["arguments"]
         res_json = json.loads(result)
-        final = make_first_person(res_json['conviction'])
+        final = fix_third_person(participant, res_json['conviction'])
     else:
         # Keine Änderung notwendig, da keine Argumente gegeben und Überzeugung bereits vorhanden
         final = conv
@@ -1046,6 +1051,11 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                     else:
                         contras.append(item)
                     print('fertig')
+            ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
+            print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
+            print(pros[0] + ' thinks yes')
+            print(contras[0] + ' is not convinced')
+            ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
             for speaker in pros:
                 start_number = public_discussions.count() + 1
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
@@ -1117,7 +1127,7 @@ prompt = (
     "Write a conversation with the following setup: "
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
-    "2. Long and detailed conversation. "
+    "2. Long and detailed conversation. Between 500 and 1000 words"
     "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
     "4. Setting: At the beach. Everybody is relaxed "
     "5. Topic: The Simulation Hypothesis and its implications"
