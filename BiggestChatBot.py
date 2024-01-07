@@ -1015,6 +1015,7 @@ def handle_conversation_outcome(loop_counter):
 
 
 def next_conversation(given_participants_list, given_chosen_topic=""):
+    print("HIIIIIIIIIIIIIIIIIIIIIIIER")
     with st.chat_message("assistant"):
         st.markdown(f"DEBUG: nextConversation(participants : {given_participants_list}, topic : {given_chosen_topic})")
         message_placeholder = st.empty()
@@ -1164,9 +1165,7 @@ def start_conversation():
         message_placeholder = st.empty()
         first_conv_str, extracted_topics = start_first_conversation()
         message_placeholder.markdown(first_conv_str)
-    for topic in extracted_topics:
-        if st.button(topic):
-            next_conversation(participants_list, topic)
+    return extracted_topics
 
 
 def handle_user_input(user_input, participants_list):
@@ -1195,7 +1194,7 @@ with st.sidebar:
     st.title("💬 ConversationsBot")
     st.write("With this program, you can make two selected individuals engage in a discussion. "
              "They will try to persuade each other, and you can observe their interaction. "
-             "Simply input something into the chat to get started. "
+             "Simply click on the button \"Start first conversation\" to get started. "
              "Afterwards, you can choose a topic from the first conversation "
              "that will be focused on in the next iteration.\n")
     part_1 = st.text_input("First participant", "Elon Musk", key="part_1_input")
@@ -1211,8 +1210,22 @@ if "openai_model" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if st.button("Start first conversation", type="primary"):
-    # handle_user_input(user_input_prompt, participants_list)
-    start_conversation()
+if "counter" not in st.session_state:
+    st.session_state["counter"] = 0
+
+if st.session_state.counter == 0:
+    if st.button("Start first conversation", type="primary"):
+        # handle_user_input(user_input_prompt, participants_list)
+        if "extracted_topics" not in st.session_state:
+            st.session_state["extracted_topics"] = start_conversation()
+        else:
+            st.session_state.extracted_topics = start_conversation()
+
+        st.session_state.counter = 1
+
+if st.session_state.counter != 0:
+    for topic in st.session_state.extracted_topics:
+        if st.button(topic):
+            next_conversation(participants_list, topic)
 
 # TODO: wie endet die Conversationskette? Userinput oder automatisch?
