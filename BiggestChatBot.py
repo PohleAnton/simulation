@@ -67,13 +67,10 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
 def get_or_create_collection(client, collection_name, selector):
     try:
-        if selector ==1:
-            return client.get_collection(name=collection_name, embedding_function=openai_ef)
-        else:
-            return client.get_collection(name=collection_name)
+        return client.get_collection(name=collection_name)
     except Exception as e:
         if selector == 1:
-            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"},  embedding_function=openai_ef)
+            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
 
@@ -155,6 +152,8 @@ if 'all_against' not in st.session_state:
     st.session_state['all_against'] = False
 if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
+if 'document_participants_set' not in st.session_state:
+    st.session_state['document_participants_set'] = None
 
 ##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
 if not 'first_run' in st.session_state:
@@ -698,15 +697,15 @@ def get_best_document(topic, participants_list, precise=False, precision=0.25):
     r = public_discussions.query(query_texts=topic)
     checker = set(participants_list)
     final = []
-    documents_participants_set = None
+    #documents_participants_set = None
     if precise:
         filtered_documents = []
         for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
             if distance < precision:
                 filtered_documents.append(document)
-                document_participants_set = set(metadatas.get('participants').split(', '))
+                st.session_state['document_participants_set'] = set(metadatas.get('participants').split(', '))
 
-            if checker.issubset(document_participants_set):
+            if checker.issubset(st.session_state['document_participants_set']):
                 final.append(document)
             # das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
             # an denen sie nicht beteiligt waren
@@ -1053,12 +1052,12 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                         contras.append(item)
                         message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = not yes")
                         message_placeholder = st.empty()  # just for Debug
-                    print('fertig')
-            ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
-            print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
-            print(pros[0] + ' thinks yes')
-            print(contras[0] + ' is not convinced')
-            ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
+            #         print('fertig')
+            # ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
+            # print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
+            # print(pros[0] + ' thinks yes')
+            # print(contras[0] + ' is not convinced')
+            # ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
             for speaker in pros:
                 start_number = public_discussions.count() + 1
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
