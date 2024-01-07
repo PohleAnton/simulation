@@ -683,7 +683,7 @@ def query_public_discussions(query, results=10, precision=0.4):
 def get_best_document_simple(topic, participants_list):
     # Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
     r = public_discussions.get(where={'theme': topic})
-    checker = set(participants_list[0].split(', '))
+    checker = set(participants_list)
     final = []
     for document, metadata in zip(r['documents'], r['metadatas']):
         document_participants_str = metadata['participants']
@@ -694,11 +694,11 @@ def get_best_document_simple(topic, participants_list):
     return final_string
 
 
-def get_best_document(topic, participants_list, precise=False, precision=0.3):
+def get_best_document(topic, participants_list, precise=False, precision=0.25):
     r = public_discussions.query(query_texts=topic)
-
-    checker = set(participants_list[0].split(', '))
+    checker = set(participants_list)
     final = []
+    documents_participants_set = None
     if precise:
         filtered_documents = []
         for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
@@ -853,31 +853,22 @@ def update_conviction(participant, topic, new_conviction):
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
-    # Überprüfen, ob das Argument und die Überzeugung gültig sind
-    if not argument:
-        return "Das Argument darf nicht leer sein."
-
     con = get_latest_conviction(listener, chosen_topic)
-    if not con:
-        return f"Keine vorhandene Überzeugung für {listener} zum Thema '{chosen_topic}' gefunden."
+    list = get_convincing_factors()
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly. You are not convinced easily"},
+            {"role": "user",
+             "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
+        ]
+    )
+    ans = judge['choices'][0]['message']['content']
+    update_conviction(listener, chosen_topic, ans)
+    return ans
 
-    list = get_file_content_or_fetch_from_gpt('ConvincingFactors.txt', criteria_prompt, "extract_headings")
 
-    try:
-        judge = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system",
-                 "content": f"Sie bewerten ein Argument auf Basis von {list} und passen eine vorherige Überzeugung entsprechend an."},
-                {"role": "user",
-                 "content": f"Bewerten Sie dieses Argument: {argument} und formulieren Sie {con} entsprechend um. Schreiben Sie nur in der ersten Person."}
-            ]
-        )
-        ans = judge['choices'][0]['message']['content']
-        update_conviction(listener, chosen_topic, ans)
-        return ans
-    except Exception as e:
-        return f"Ein Fehler ist aufgetreten: {str(e)}"
 
 
 def lets_goooooo(participants, chosen_topic):
