@@ -153,7 +153,7 @@ if 'all_against' not in st.session_state:
 if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
 if 'document_participants_set' not in st.session_state:
-    st.session_state['document_participants_set'] = None
+    st.session_state['document_participants_set'] = set()
 
 ##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
 if not 'first_run' in st.session_state:
@@ -703,7 +703,8 @@ def get_best_document(topic, participants_list, precise=False, precision=0.25):
         for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
             if distance < precision:
                 filtered_documents.append(document)
-                st.session_state['document_participants_set'] = set(metadatas.get('participants').split(', '))
+                participants = metadatas.get('participants', '')
+                st.session_state['document_participants_set'] = set(participants.split(', ')) if participants else set()
 
             if checker.issubset(st.session_state['document_participants_set']):
                 final.append(document)
