@@ -20,6 +20,8 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 
 
+
+
 # chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
@@ -65,14 +67,10 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
 
 def get_or_create_collection(client, collection_name, selector):
     try:
-        if selector == 1:
-            return client.get_collection(name=collection_name, embedding_function=openai_ef)
-        else:
-            return client.get_collection(name=collection_name)
+        return client.get_collection(name=collection_name)
     except Exception as e:
         if selector == 1:
-            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"},
-                                            embedding_function=openai_ef)
+            return client.create_collection(name=collection_name, metadata={"hnsw:space": "ip"})
         else:
             return client.create_collection(name=collection_name)
 
@@ -154,6 +152,8 @@ if 'all_against' not in st.session_state:
     st.session_state['all_against'] = False
 if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
+if 'document_participants_set' not in st.session_state:
+    st.session_state['document_participants_set'] = set()
 
 ##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
 if not 'first_run' in st.session_state:
@@ -682,7 +682,7 @@ def query_public_discussions(query, results=10, precision=0.4):
 def get_best_document_simple(topic, participants_list):
     # Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
     r = public_discussions.get(where={'theme': topic})
-    checker = set(participants_list[0].split(', '))
+    checker = set(participants_list)
     final = []
     for document, metadata in zip(r['documents'], r['metadatas']):
         document_participants_str = metadata['participants']
@@ -693,21 +693,20 @@ def get_best_document_simple(topic, participants_list):
     return final_string
 
 
-def get_best_document(topic, participants_list, precise=False, precision=0.3):
+def get_best_document(topic, participants_list, precise=False, precision=0.25):
     r = public_discussions.query(query_texts=topic)
-
-    checker = set(participants_list[0].split(', '))
+    checker = set(participants_list)
     final = []
+    #documents_participants_set = None
     if precise:
         filtered_documents = []
         for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
-            document_participants_set = None
             if distance < precision:
                 filtered_documents.append(document)
-                document_participants_set = set(metadatas.get('participants').split(', '))
-                st.session_state["document_participants_set"] = document_participants_set
+                participants = metadatas.get('participants', '')
+                st.session_state['document_participants_set'] = set(participants.split(', ')) if participants else set()
 
-            if checker.issubset(document_participants_set):
+            if checker.issubset(st.session_state['document_participants_set']):
                 final.append(document)
             # das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
             # an denen sie nicht beteiligt waren
@@ -854,31 +853,22 @@ def update_conviction(participant, topic, new_conviction):
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
-    # Überprüfen, ob das Argument und die Überzeugung gültig sind
-    if not argument:
-        return "Das Argument darf nicht leer sein."
-
     con = get_latest_conviction(listener, chosen_topic)
-    if not con:
-        return f"Keine vorhandene Überzeugung für {listener} zum Thema '{chosen_topic}' gefunden."
+    list = get_convincing_factors()
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly. You are not convinced easily"},
+            {"role": "user",
+             "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
+        ]
+    )
+    ans = judge['choices'][0]['message']['content']
+    update_conviction(listener, chosen_topic, ans)
+    return ans
 
-    list = get_file_content_or_fetch_from_gpt('ConvincingFactors.txt', criteria_prompt, "extract_headings")
 
-    try:
-        judge = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system",
-                 "content": f"Sie bewerten ein Argument auf Basis von {list} und passen eine vorherige Überzeugung entsprechend an."},
-                {"role": "user",
-                 "content": f"Bewerten Sie dieses Argument: {argument} und formulieren Sie {con} entsprechend um. Schreiben Sie nur in der ersten Person."}
-            ]
-        )
-        ans = judge['choices'][0]['message']['content']
-        update_conviction(listener, chosen_topic, ans)
-        return ans
-    except Exception as e:
-        return f"Ein Fehler ist aufgetreten: {str(e)}"
 
 
 def lets_goooooo(participants, chosen_topic):
@@ -1063,21 +1053,12 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                         contras.append(item)
                         message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = not yes")
                         message_placeholder = st.empty()  # just for Debug
-                    print('fertig')
-            ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
-            if len(participants_list) > 0:
-                print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
-            else:
-                print("participants_list ist kleiner als 0")
-            if len(pros) > 0:
-                print(pros[0] + ' thinks yes')
-            else:
-                print("no one thinks yes")
-            if len(contras) > 0:
-                print(contras[0] + ' is not convinced')
-            else:
-                print("no one is not convinced")
-            ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
+            #         print('fertig')
+            # ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
+            # print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
+            # print(pros[0] + ' thinks yes')
+            # print(contras[0] + ' is not convinced')
+            # ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
             for speaker in pros:
                 start_number = public_discussions.count() + 1
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
@@ -1228,10 +1209,7 @@ if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-3.5-turbo"
 if "messages" not in st.session_state:
     st.session_state.messages = []
-"""
-if "counter" in st.session_state:
-    st.session_state.counter = 0
-"""
+
 if "counter" not in st.session_state:
     st.session_state["counter"] = 0
 
