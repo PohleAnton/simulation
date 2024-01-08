@@ -11,8 +11,7 @@ from pathlib import Path
 import random
 from chromadb.utils import embedding_functions
 
-# TODO: Twitter API-Schlüssel und Zugangstokens bereit bereitstellen
-# Diese sollten als Umgebungsvariablen oder in einer Konfigurationsdatei gespeichert sein
+# Twitter API-Schlüssel und Zugangstokens bereitstellen
 api_key_elon = os.getenv("API_KEY_ELON")
 api_secret_elon = os.getenv("API_SECRET_ELON")
 access_token_elon = os.getenv("ACCESS_TOKEN_ELON")

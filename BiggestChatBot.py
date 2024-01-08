@@ -2,9 +2,7 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
-import os
-import platform
-import subprocess
+
 import chromadb
 import openai
 import streamlit as st
@@ -20,8 +18,6 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 )
 
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
-
-
 # chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
@@ -53,11 +49,10 @@ def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name)
         functions=functions
     )
 
-    points_json = unstringyfy(raw)
-    # try:
-    #     points_json = json.loads(raw)
-    # except json.JSONDecodeError:
-    #     points_json = json.dumps(raw)
+    try:
+        points_json = json.loads(raw)
+    except json.JSONDecodeError:
+        points_json = json.dumps(raw)
 
     points = points_json['headings']
     with open(file_path, 'w') as file:
@@ -77,7 +72,7 @@ def get_or_create_collection(client, collection_name, selector):
 
 
 def get_or_create_collection_with_session(client, collection_name, selector=2):
-    key = collection_name
+    key = f"collection_{collection_name}"
     if key not in st.session_state['collections']:
         st.session_state['collections'][key] = get_or_create_collection(client, collection_name, selector)
     else:
@@ -92,8 +87,6 @@ def get_or_create_collection_with_session(client, collection_name, selector=2):
     return st.session_state['collections'][key]
 
 
-##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
-##ToDo Vielleicht kann das ja "irgendjemand" recherchieren
 if 'collections' not in st.session_state:
     st.session_state['collections'] = {}
 
@@ -155,36 +148,10 @@ if 'theme_count' not in st.session_state:
     st.session_state['theme_count'] = None
 if 'document_participants_set' not in st.session_state:
     st.session_state['document_participants_set'] = set()
-if 'speaker' not in st.session_state:
-    st.session_state['speaker'] = ''
-if 'listener' not in st.session_state:
-    st.session_state['listener'] = ''
-if 'listener_argument' not in st.session_state:
-    st.session_state['listener_argument'] = ''
-if 'speaker_argument' not in st.session_state:
-    st.session_state['speaker_argument'] = ''
 
 ##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
 if not 'first_run' in st.session_state:
     st.session_state['first_run'] = False
-
-def shutdown_system():
-    os_name = platform.system()
-
-    try:
-        if os_name == 'Windows':
-            os.system("shutdown /s /t 3")
-        elif os_name == 'Linux' or os_name == 'Linux2':
-            subprocess.run(["shutdown", "-h", "+3"])
-        elif os_name == 'Darwin':  # macOS
-            subprocess.run(["sudo", "shutdown", "-h", "+3"])
-        else:
-            print("Unsupported operating system.")
-    except Exception as e:
-        print(f"Error during shutdown: {e}")
-
-
-
 
 ##ToDo @Pauline: Ich glaube, es ist so:
 public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", 1)
@@ -341,27 +308,17 @@ functions = [
     },
     {
         "name": "form_argument",
-        "description": "A function that generates a convincing argument about a topic based on conviction and a strategies. Should be as convincing as possible.  ",
+        "description": "A function that generates a convincing argument about a topic based on conviction and a strategy. Should be as convincing as possible.  ",
         "parameters": {
             "type": "object",
             "properties": {
-                "argument_1": {
+                "argument": {
                     "type": "string",
                     "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
-                                   "Meant to be convincing. Based on strategy_1, maybe including prior discussion."
-                },
-                "argument_2": {
-                    "type": "string",
-                    "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
-                                   "Meant to be convincing. Based on strategy_2, maybe including prior discussion."
-                },
-                "argument_3": {
-                    "type": "string",
-                    "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
-                                   "Meant to be convincing. Based on strategy 1, maybe including prior discussion."
+                                   "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategies", "conviction", "prior discussion", "topic", "speaker"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     },
     {
@@ -373,10 +330,10 @@ functions = [
                 "argument": {
                     "type": "string",
                     "description": "An argument a speaker might make to convince somebody of the a certain idea is false."
-                                   "Meant to be convincing. Based on a few given strategies, maybe including prior discussion."
+                                   "Meant to be convincing. Based on a given strategy, maybe including prior discussion."
                 }
             },
-            "required": ["strategies", "conviction", "prior discussion", "topic", "speaker"]
+            "required": ["strategy", "conviction", "prior discussion", "topic", "speaker"]
         }
     }
 ]
@@ -479,19 +436,19 @@ def get_latest_conviction_id(participant, topic):
                 collection = collection_db.get(where={'theme': topic})
             except KeyError:
                 print(f"KeyError beim Zugriff auf die Collection")
-    if collection is not None:
-        try:
-            ids = collection.get('ids', [])
-            if ids:
-                latest = max(ids, key=extract_timestamp)
-                return latest
-        except KeyError:
-            print(f"KeyError beim Zugriff auf die Collection")
-    return None
+            break
+    try:
+        if collection['ids'][0]:
+            ids = collection['ids']
+            latest = max(ids, key=extract_timestamp)
+            return latest
+    except KeyError:
+        print(f"KeyError beim Zugriff auf die Collection")
+        return None
 
 
 def get_latest_conviction(participant, topic):
-    collection_name = 'collection_' + participant.replace(' ', '') + 'Conviction'
+    collection_name = participant.replace(' ', '') + 'Conviction'
     try:
         id = get_latest_conviction_id(participant, topic)
         if id:
@@ -603,24 +560,6 @@ def find_core_issues(topic):
         return None
 
 
-def unstringyfy(data_str):
-    try:
-        # Remove potential extra quotes at the beginning and end
-        if data_str.startswith('"') and data_str.endswith('"'):
-            data_str = data_str[1:-1]
-
-        # Replace escaped double quotes
-        data_str = data_str.replace('\\"', '"')
-
-        # Parse the string as JSON
-        parsed_data = json.loads(data_str)
-        return parsed_data
-
-    except json.decoder.JSONDecodeError as e:
-        print(f"Error decoding JSON: {e}")
-        return None
-
-
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
     conversation_topics = []
@@ -642,11 +581,10 @@ def extract_topics_of_conversation(given_conversation):
             function_call={'name': 'find_topics'}
         )
         content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
-        structured_data = unstringyfy(content)
-        # try:
-        #     structured_data = json.loads(content)
-        # except json.decoder.JSONDecodeError:
-        #     structured_data = json.dumps(content)
+        try:
+            structured_data = json.loads(content)
+        except json.decoder.JSONDecodeError:
+            structured_data = json.dumps(content)
         given_topics = ', '.join(structured_data['themes'])
     else:
         text = get_response_content(given_conversation)
@@ -664,16 +602,12 @@ def extract_topics_of_conversation(given_conversation):
         function_call={'name': 'split_conversation'}
     )
     data = data['choices'][0]['message']['function_call']['arguments']
-    new_data = unstringyfy(data)
-    # try:
-    #     new_data = json.loads(data)
-    # except json.decoder.JSONDecodeError:
-    #     new_data = json.dumps(data)
-    st.markdown(new_data)
-    st.markdown(type(new_data))
+    try:
+        new_data = json.loads(data)
+    except json.decoder.JSONDecodeError:
+        new_data = json.dumps(data)
+
     if not st.session_state['first_finished']:
-        # st.markdown(new_data)
-        # st.markdown(type(new_data))
         for theme in new_data["themes"]:
             # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
             # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
@@ -739,33 +673,47 @@ def query_public_discussions(query, results=10, precision=0.4):
     return result
 
 
-def get_best_document(topic, participants_list, precision):
+def get_best_document_simple(topic, participants_list):
+    # Die Distanzen sind bei so abstrakten Themen leider nicht wirklich zu gebrauchen...
+    r = public_discussions.get(where={'theme': topic})
+    checker = set(participants_list)
+    final = []
+    for document, metadata in zip(r['documents'], r['metadatas']):
+        document_participants_str = metadata['participants']
+        document_participants_set = set(document_participants_str.split(', '))
+        if checker.issubset(document_participants_set):
+            final.append(document)
+    final_string = '\n'.join(final)
+    return final_string
+
+
+def get_best_document(topic, participants_list, precise=False, precision=0.25):
     r = public_discussions.query(query_texts=topic)
     checker = set(participants_list)
     final = []
-    documents_participants_set = set()
-    filtered_documents = []
-    for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
-        if distance < precision:
-            filtered_documents.append(document)
-            participants = metadatas.get('participants', '')
-            documents_participants_set = set(participants.split(', ')) if participants else set()
+    #documents_participants_set = None
+    if precise:
+        filtered_documents = []
+        for distance, document, metadatas in zip(r['distances'][0], r['documents'][0], r['metadatas'][0]):
+            if distance < precision:
+                filtered_documents.append(document)
+                participants = metadatas.get('participants', '')
+                st.session_state['document_participants_set'] = set(participants.split(', ')) if participants else set()
 
-            if checker.issubset(documents_participants_set):
+            if checker.issubset(st.session_state['document_participants_set']):
                 final.append(document)
             # das subset wird nur in diese richtugn getestet- sonst könnten sich ggf. particpants an konversationen erinnern,
             # an denen sie nicht beteiligt waren
         final_string = '\n'.join(final)
         return final_string
-
     else:
-        return ''
+        return r['documents']
 
 
 def get_prior_discussion(topic, participants_list):
     # ToDo: Note to self: Vielleicht kann ich die query public discussions Methoden zusammenschrumpfen. Noch sind sie einzeln. Man weiß ja nie...
-    r = get_best_document(topic, participants_list, 0.25)
-    combined_string = "\n".join(r) if len(r) > 1 else ''
+    r = get_best_document(topic, participants_list, True, 0.35)
+    combined_string = "\n".join(r) if len(r) > 1 else r[0]
     return combined_string
 
 
@@ -793,24 +741,21 @@ def get_stratey():
     with open(file_path, 'r') as file:
         content = file.read()
         bullet_points_list = content.split('\n')
-        random_bullet_points = random.sample(bullet_points_list, 2)
+        random_bullet_points = random.sample(bullet_points_list, 3)
         random_bullet_points_string = '\n'.join(random_bullet_points)
-        # so that it always tries to be logical:
-        logic = '\n'.join('Logical Reasoning, Emotional Appeal')
-        return logic
+        return random_bullet_points_string
 
 
 def form_argument(speaker, chosen_topic, believe, participants_list):
-    strategies = get_stratey()
+    strategy = get_stratey()
     speaker_conviction = get_latest_conviction(speaker, chosen_topic)
     prior_discussions = get_prior_discussion(chosen_topic, participants_list)
-    st.markdown(prior_discussions)
     if 'yes' in believe.lower():
         speaker_argument = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_argument from {speaker} using these strategies: {strategies} about {chosen_topic} based on {speaker_conviction}. Write at least 70 words per strategy. This was said before:{prior_discussions}"}
+                 "content": f"form_argument from {speaker} using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_argument'}
@@ -821,18 +766,17 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_counterargument from {speaker} using these strategies: {strategies} about {chosen_topic} based on {speaker_conviction}. Write at least 70 words per strategy. This was said before:{prior_discussions}"}
+                 "content": f"form_counterargument from {speaker} using one or more of these techniques: {strategy} about {chosen_topic} based on {speaker_conviction}. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_counterargument'}
         )
         argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
 
-    arg_json = unstringyfy(argument_string)
-    # try:
-    #     arg_json = json.loads(argument_string)
-    # except json.JSONDecodeError:
-    #     arg_json = json.dumps(argument_string)
+    try:
+        arg_json = json.loads(argument_string)
+    except json.JSONDecodeError:
+        arg_json = json.dumps(argument_string)
     argument = arg_json['argument']
     return argument
 
@@ -862,6 +806,30 @@ def judge_concivtion(participant, topic):
         return f"An error occurred: {str(e)}"
 
 
+def score_conviction(participant, topic):
+    try:
+        iss = public_discussions.get(where={'theme': topic})
+        issue = iss.get('metadatas', [{}])[0].get('issue')
+        if not issue:
+            return f"Issue not found for the topic '{topic}'."
+
+        conv = get_latest_conviction(participant, topic)
+        if not conv:
+            return f"No conviction found for {participant} on the topic '{topic}'."
+
+        judge = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You only answer with a number"},
+                {"role": "user",
+                 "content": f"Based on {conv}, answer {issue} and rate it on a scale from 1 - 100, 1 meaning not convinced at all, 100 being totally convinced"}
+            ]
+        )
+        return judge['choices'][0]['message']['content']
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
+
 def update_conviction(participant, topic, new_conviction):
     if not new_conviction or not topic:
         return "Conviction or topic cannot be empty."
@@ -885,7 +853,7 @@ def argument_vs_conviction(argument, listener, chosen_topic):
         model=model,
         messages=[
             {"role": "system",
-             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly."},
+             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly. You are not convinced easily"},
             {"role": "user",
              "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
         ]
@@ -893,6 +861,8 @@ def argument_vs_conviction(argument, listener, chosen_topic):
     ans = judge['choices'][0]['message']['content']
     update_conviction(listener, chosen_topic, ans)
     return ans
+
+
 
 
 def lets_goooooo(participants, chosen_topic):
@@ -993,7 +963,7 @@ def flip_needed(particants_list, topic):
             both_yes = False
         if 'yes' in item.lower():
             both_no = False
-    if both_yes or both_no:
+    if both_yes and both_no:
         return True
     else:
         return False
@@ -1014,7 +984,7 @@ def reset_convictions(participants_list):
 
 def fix_third_person(given_name, given_text):
     # note: das wirkt sehr ähnlich zu make_first_person, löst aber ein anderes problem: wenn aus dem memory stream geschöpft wird, kommt auch der name des damaligen sprechers mit
-    # und zwar auch, wenn es erneut derselbe sprecher - dies führt zuweilen dazu, dass Personen von sich selbst in der 3. Person sprechen
+    # und zwar auch, wenn es erneut der selbe sprecher - dies führt zuweilen dazu, dass Personen von sich selbst in der 3. Person sprechen
     res = openai.ChatCompletion.create(
         model=model,
         messages=[
@@ -1039,10 +1009,9 @@ def handle_conversation_outcome(loop_counter):
 
 
 def next_conversation(given_participants_list, given_chosen_topic=""):
-    speaker_argument = st.session_state['speaker_argument']
-    listener_argument = st.session_state['listener_argument']
-
+    print("HIIIIIIIIIIIIIIIIIIIIIIIER")
     with st.chat_message("assistant"):
+        st.markdown(f"DEBUG: nextConversation(participants : {given_participants_list}, topic : {given_chosen_topic})")
         message_placeholder = st.empty()
         # Aktualisiere die Zustände aus st.session_state
         all_on_board = st.session_state.get('all_on_board', False)
@@ -1051,115 +1020,102 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
         flip = flip_needed(given_participants_list, given_chosen_topic)
         participants = ', '.join(given_participants_list)
         issue = get_yes_or_no(given_chosen_topic)
-        st.markdown(
-            given_participants_list[0] + ' and ' + given_participants_list[
-                1] + ' are discussing the question: ' + issue)
-
         while flip:
+            message_placeholder.markdown("DEBUG: nextConversation -> while flip")
             message_placeholder = st.empty()  # just for Debug
-            flip_conviction(random.choice(given_participants_list), given_chosen_topic)
+            flip_conviction(random.choice(given_participants_list))
             flip = flip_needed(given_participants_list, given_chosen_topic)
 
         loop_counter = 0
         pros = []
         contras = []
-
         while not all_on_board and not all_against:
-
+            message_placeholder.markdown("DEBUG: nextConversation -> while not all_on_board and not all_against")
             message_placeholder = st.empty()  # just for Debug
             loop_counter += 1
             randomizer = list(given_participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
 
             if loop_counter == 1:
+                message_placeholder.markdown("DEBUG: nextConversation -> loop_counter = 1")
+                message_placeholder = st.empty()  # just for Debug
                 for item in randomizer:
                     if 'yes' in score_conviction_and_answer(item, given_chosen_topic)[0].lower():
                         pros.append(item)
+                        message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = yes")
+                        message_placeholder = st.empty()  # just for Debug
                     else:
                         contras.append(item)
-            for item in pros:
-                st.markdown(item + ' thinks yes')
-            for item in contras:
-                st.markdown(item + ' is not convinced')
-
-            speaker = st.session_state['speaker']
+                        message_placeholder.markdown("DEBUG: nextConversation -> for item in randomizer = not yes")
+                        message_placeholder = st.empty()  # just for Debug
+            #         print('fertig')
+            # ##ToDo: was vielleicht ganz nett wäre, nach Auswahl des Themas, im Frontend auszugeben:
+            # print(participants_list[0] + ' und ' + participants_list[1] + ' diskutieren die Frage: ' + issue)
+            # print(pros[0] + ' thinks yes')
+            # print(contras[0] + ' is not convinced')
+            # ##ToDo: das könnte man ja bei bedarf noch auf plural ausweiten
             for speaker in pros:
                 start_number = public_discussions.count() + 1
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
                 speaker_argument = fix_third_person(speaker, speaker_argument)
                 # das ist das, womit der participant überzeugen will:
-                st.markdown(speaker + ': ')
-                st.markdown(speaker_argument)
+                message_placeholder.markdown(speaker_argument)
+                message_placeholder = st.empty()
                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
 
-                #hier könnte man überlegen, ob man diesen vorgang nach hinten schiebt, sodass erst beibe sprechen
-                #aber das projekt wird langsam teuer, deswegen...
+                # es ist evtl. ungeschickt, diese anpassung sofort durchzuführen (um token zu sparen, wird es nach dem loop gemacht
+                # hier wird überprüft, ob schon überzeugt wurde - das passiert noch relativ häufig. ich will hier mit zahlen arbeiten
                 for listener in contras:
                     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+                    # print(new_listener_conviction)
 
-            listener = st.session_state['listener']
             for listener in contras:
-                test = score_conviction_and_answer(listener, given_chosen_topic)
-                if 'yes' in test[0].lower():
+                if 'yes' in judge_concivtion(listener, given_chosen_topic).lower():
                     contras.remove(listener)
                     pros.append(listener)
             for listener in contras:
-                start_number = public_discussions.count() + 1
                 listener_argument = form_argument(listener, given_chosen_topic, 'no', given_participants_list)
                 listener_argument = fix_third_person(listener, listener_argument)
                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
                 # das tatsächliche gegenargument
-                st.markdown(listener + ': ')
-                st.markdown(listener_argument)
+                message_placeholder.markdown(listener_argument)
+                message_placeholder = st.empty()
                 for speaker in pros:
                     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
 
             for speaker in pros:
-                test = score_conviction_and_answer(listener, given_chosen_topic)
-                if 'no' in test[0].lower():
+                if 'no' in judge_concivtion(speaker, given_chosen_topic).lower():
                     pros.index(speaker)
                     contras.append(speaker)
 
-
+            # #in Form von: {speaker} says: (Damit der Name zwar im Frontend, aber nicht im eigentlichen Prompt
+            # auftaucht) {argument}
             new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
-            if len(pros) == 0:
-                all_against = True
-            if len(contras) == 0:
-                all_on_board = True
-            #all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
+
+            all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
 
         # Aktualisiere st.session_state mit den neuen Zuständen
         st.session_state['all_on_board'] = all_on_board
         st.session_state['all_against'] = all_against
 
         if loop_counter < 4:
+            # video_path=''
+            print('magic')
+            message_placeholder.markdown("magic")
+            message_placeholder = st.empty()
             if st.session_state['all_on_board']:
-                prompt, selector = make_final_prompt(issue, 'yes')
-                result = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                st.markdown(result['choices'][0]['message']['content'])
-                if selector == 0:
-                    st.markdown('shutdown_system()')
+                x = 0  # os.system("shutdown /s /t 1")
+                message_placeholder.markdown("All on board")
             if st.session_state['all_against']:
-                prompt = make_final_prompt(issue, 'no')[0]
-                result = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                st.markdown(result['choices'][0]['message']['content'])
-
-            # os.startfile(video_path)
+                print('')
+                message_placeholder.markdown("All against")
+                # os.startfile(video_path)
         else:
-            st.markdown('Um Token zu sparen, wird das Experiment an dieser Stelle abgebrochen')
+            print('no magic')
+            message_placeholder.markdown("finished, no magic")
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
@@ -1168,26 +1124,12 @@ prompt = (
     "Write a conversation with the following setup: "
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
-    "2. Long and detailed conversation."
+    "2. Long and detailed conversation. Between 500 and 1000 words"
     "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
     "4. Setting: At the beach. Everybody is relaxed "
     "5. Topic: The Simulation Hypothesis and its implications"
     "6. Involved Individuals: "
 )
-
-
-def make_final_prompt(issue, answer):
-    choice = random.randint(0 , 1)
-    #wegen GPTS unerträglicher Tendenz zur Hoffnung!
-    if choice == 0:
-        prompt = ("Assume you are an entire civilisation that has just answered the question: "
-                  f"\"{issue}\" with '{answer}' - write a possible statement this civilisation "
-                  "might give as a whole. can be emotional or radical. Make it a pessimistic response")
-    else:
-        prompt = ("Assume you are an entire civilisation that has just answered the question: "
-                  f"\"{issue}\" with '{answer}' - write a possible statement this civilisation "
-                  "might give as a whole. can be emotional or radical. Make it an optimistic response")
-    return prompt, choice
 
 
 def start_first_conversation():
