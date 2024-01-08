@@ -1,9 +1,9 @@
-iName:
+Name:
 Profession:
-Myers-Briggs Type:
 Alcohol / Drugs:
 Interests:
 Personality Traits:
 Religion:
-Origin of the Universe:
 Metaphysics:
+Susceptibility to Persuasion(in three words or less, don't add any explanation):
+
