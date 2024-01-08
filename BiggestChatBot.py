@@ -168,6 +168,7 @@ if 'speaker_argument' not in st.session_state:
 if not 'first_run' in st.session_state:
     st.session_state['first_run'] = False
 
+
 def shutdown_system():
     os_name = platform.system()
 
@@ -182,8 +183,6 @@ def shutdown_system():
             print("Unsupported operating system.")
     except Exception as e:
         print(f"Error during shutdown: {e}")
-
-
 
 
 ##ToDo @Pauline: Ich glaube, es ist so:
@@ -341,7 +340,7 @@ functions = [
     },
     {
         "name": "form_argument",
-        "description": "A function that generates a convincing argument about a topic based on conviction and a strategies. Should be as convincing as possible.  ",
+        "description": "A function that generates a convincing argument about a topic based on conviction and given strategies. Should be as convincing as possible.  ",
         "parameters": {
             "type": "object",
             "properties": {
@@ -358,25 +357,35 @@ functions = [
                 "argument_3": {
                     "type": "string",
                     "description": "An argument a speaker might make to convince somebody of the truth or importance of the subject"
-                                   "Meant to be convincing. Based on strategy 1, maybe including prior discussion."
+                                   "Meant to be convincing. Based on strategy_3, maybe including prior discussion."
                 }
             },
-            "required": ["strategies", "conviction", "prior discussion", "topic", "speaker"]
+            "required": ["strategy_1", "strategy_2", "strategy_3", "conviction", "prior discussion", "topic", "speaker"]
         }
     },
     {
         "name": "form_counterargument",
-        "description": "A function that generates a convincing argument about the falsehood of an idea or topic based on conviction and a strategy. Should be as convincing as possible.  ",
+        "description": "A function that generates a convincing argument about the falsehood of an idea or topic based on conviction and given strategies. Should be as convincing as possible.  ",
         "parameters": {
             "type": "object",
             "properties": {
-                "argument": {
+                "argument_1": {
                     "type": "string",
-                    "description": "An argument a speaker might make to convince somebody of the a certain idea is false."
-                                   "Meant to be convincing. Based on a few given strategies, maybe including prior discussion."
+                    "description": "An argument a speaker might make to convince somebody that a certain idea is false"
+                                   "Meant to be convincing. Based on strategy_1, maybe including prior discussion."
+                },
+                "argument_2": {
+                    "type": "string",
+                    "description": "An argument a speaker might make to convince somebody a certain idea is false"
+                                   "Meant to be convincing. Based on strategy_2, maybe including prior discussion."
+                },
+                "argument_3": {
+                    "type": "string",
+                    "description": "An argument a speaker might make to convince somebody a certain idea is false"
+                                   "Meant to be convincing. Based on strategy_3, maybe including prior discussion."
                 }
             },
-            "required": ["strategies", "conviction", "prior discussion", "topic", "speaker"]
+            "required": ["strategy_1", "strategy_2", "strategy_3", "conviction", "prior discussion", "topic", "speaker"]
         }
     }
 ]
@@ -672,8 +681,8 @@ def extract_topics_of_conversation(given_conversation):
     st.markdown(new_data)
     st.markdown(type(new_data))
     if not st.session_state['first_finished']:
-        # st.markdown(new_data)
-        # st.markdown(type(new_data))
+        st.markdown(new_data)
+        st.markdown(type(new_data))
         for theme in new_data["themes"]:
             # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
             # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
@@ -793,15 +802,19 @@ def get_stratey():
     with open(file_path, 'r') as file:
         content = file.read()
         bullet_points_list = content.split('\n')
-        random_bullet_points = random.sample(bullet_points_list, 2)
+        random_bullet_points = random.sample(bullet_points_list, 1)
         random_bullet_points_string = '\n'.join(random_bullet_points)
         # so that it always tries to be logical:
         logic = '\n'.join('Logical Reasoning, Emotional Appeal')
-        return logic
+    return ['Logical Reasoning', 'Emotional Appeal', random_bullet_points_string]
 
 
 def form_argument(speaker, chosen_topic, believe, participants_list):
     strategies = get_stratey()
+    strategy_1 = strategies[0]
+    strategy_2 = strategies[1]
+    strategy_3 = strategies[2]
+
     speaker_conviction = get_latest_conviction(speaker, chosen_topic)
     prior_discussions = get_prior_discussion(chosen_topic, participants_list)
     st.markdown(prior_discussions)
@@ -810,31 +823,48 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_argument from {speaker} using these strategies: {strategies} about {chosen_topic} based on {speaker_conviction}. Write at least 70 words per strategy. This was said before:{prior_discussions}"}
+                 "content": f"form_argument from {speaker} using these strategies: {strategy_1}, {strategy_2}, {strategy_3}  about {chosen_topic} based on {speaker_conviction}. Write circa 70 words per strategy. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_argument'}
         )
         argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
+
     else:
         speaker_argument = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {"role": "user",
-                 "content": f"form_counterargument from {speaker} using these strategies: {strategies} about {chosen_topic} based on {speaker_conviction}. Write at least 70 words per strategy. This was said before:{prior_discussions}"}
+                 "content": f"form_counterargument from {speaker} using these strategies: {strategy_1}, {strategy_2}, {strategy_3}   about {chosen_topic} based on {speaker_conviction}. Write circa 70 words per strategy. This was said before:{prior_discussions}"}
             ],
             functions=functions,
             function_call={'name': 'form_counterargument'}
         )
         argument_string = speaker_argument['choices'][0]['message']['function_call']['arguments']
 
-    arg_json = unstringyfy(argument_string)
-    # try:
-    #     arg_json = json.loads(argument_string)
-    # except json.JSONDecodeError:
-    #     arg_json = json.dumps(argument_string)
-    argument = arg_json['argument']
-    return argument
+    if isinstance(argument_string, dict):
+        data = argument_string
+        # Use the input_data directly if it's already a dictionary
+    elif isinstance(argument_string, str):
+        try:
+            data = json.loads(argument_string)
+        except json.JSONDecodeError:
+            return "Invalid JSON string"
+    else:
+        return "Input is neither a string nor a dictionary"
+
+        # Concatenate the arguments
+    concatenated_arguments = data.get('argument_1', '') + " " + data.get('argument_2', '') + " " + data.get(
+        'argument_3', '')
+    return concatenated_arguments.strip()
+    #
+    # arg_json = unstringyfy(argument_string)
+    # # try:
+    # #     arg_json = json.loads(argument_string)
+    # # except json.JSONDecodeError:
+    # #     arg_json = json.dumps(argument_string)
+    # argument = arg_json['argument']
+    #return argument
 
 
 def judge_concivtion(participant, topic):
@@ -885,7 +915,18 @@ def argument_vs_conviction(argument, listener, chosen_topic):
         model=model,
         messages=[
             {"role": "system",
-             "content": f"You evaluate an argument for its effectiveness based on {list} and modifiy a prior conviction accordingly."},
+             "content": "You guess how hard somebody might be to convince. You only answer in 3 words or less"},
+            {"role": "user",
+             "content": f"How easy is it to convince {listener}?"}
+        ],
+    )
+    response = judge['choices'][0]['message']['content']
+    st.markdown(response)
+    judge = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": f"You evaluate an argument for its effectiveness based on {list} and modify a prior conviction accordingly. This is known about the Susceptibility to Persuasion:{response}."},
             {"role": "user",
              "content": f"evaluate this argument{argument} and reformulate {con} accordingly. Write in first person only"}
         ]
@@ -1093,8 +1134,8 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
 
-                #hier könnte man überlegen, ob man diesen vorgang nach hinten schiebt, sodass erst beibe sprechen
-                #aber das projekt wird langsam teuer, deswegen...
+                # hier könnte man überlegen, ob man diesen vorgang nach hinten schiebt, sodass erst beibe sprechen
+                # aber das projekt wird langsam teuer, deswegen...
                 for listener in contras:
                     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
@@ -1123,13 +1164,12 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                     pros.index(speaker)
                     contras.append(speaker)
 
-
             new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
             if len(pros) == 0:
                 all_against = True
             if len(contras) == 0:
                 all_on_board = True
-            #all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
+            # all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
 
         # Aktualisiere st.session_state mit den neuen Zuständen
         st.session_state['all_on_board'] = all_on_board
@@ -1177,8 +1217,8 @@ prompt = (
 
 
 def make_final_prompt(issue, answer):
-    choice = random.randint(0 , 1)
-    #wegen GPTS unerträglicher Tendenz zur Hoffnung!
+    choice = random.randint(0, 1)
+    # wegen GPTS unerträglicher Tendenz zur Hoffnung!
     if choice == 0:
         prompt = ("Assume you are an entire civilisation that has just answered the question: "
                   f"\"{issue}\" with '{answer}' - write a possible statement this civilisation "
