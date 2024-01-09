@@ -361,7 +361,7 @@ functions = [
                 }
             },
             "required": ["strategy_1", "strategy_2", "strategy_3", "conviction", "prior discussion", "topic", "speaker"]
-            }
+        }
     },
     {
         "name": "form_counterargument",
@@ -386,7 +386,7 @@ functions = [
                 }
             },
             "required": ["strategy_1", "strategy_2", "strategy_3", "conviction", "prior discussion", "topic", "speaker"]
-            }
+        }
     }
 ]
 
@@ -613,21 +613,18 @@ def find_core_issues(topic):
 
 
 def unstringyfy(data_str):
+    if isinstance(data_str, dict):
+        # Wenn data_str bereits ein Dictionary ist, gib es unverändert zurück
+        return data_str
+
     try:
-        # Remove potential extra quotes at the beginning and end
-        if data_str.startswith('"') and data_str.endswith('"'):
-            data_str = data_str[1:-1]
-
-        # Replace escaped double quotes
-        data_str = data_str.replace('\\"', '"')
-
-        # Parse the string as JSON
         parsed_data = json.loads(data_str)
+        if not isinstance(parsed_data, dict):
+            raise json.decoder.JSONDecodeError("Invalid JSON data", data_str, 0)
         return parsed_data
-
     except json.decoder.JSONDecodeError as e:
         print(f"Error decoding JSON: {e}")
-        return None
+        return {}
 
 
 # Sucht sich die Themen der Conversation zusammen
@@ -663,7 +660,7 @@ def extract_topics_of_conversation(given_conversation):
         given_topics = ', '.join(topics['themes'])
     start_number = 1 if public_discussions.count() == 0 else public_discussions.count() + 1
 
-    data = openai.ChatCompletion.create(
+    res_data = openai.ChatCompletion.create(
         model=model,
         messages=[
             {"role": "user",
@@ -672,17 +669,16 @@ def extract_topics_of_conversation(given_conversation):
         functions=functions,
         function_call={'name': 'split_conversation'}
     )
-    data = data['choices'][0]['message']['function_call']['arguments']
+    data = res_data['choices'][0]['message']['function_call']['arguments']
+    # print("data nach Auswahl:\n", data, "\n")
     new_data = unstringyfy(data)
     # try:
     #     new_data = json.loads(data)
     # except json.decoder.JSONDecodeError:
     #     new_data = json.dumps(data)
-    st.markdown(new_data)
-    st.markdown(type(new_data))
     if not st.session_state['first_finished']:
-        st.markdown(new_data)
-        st.markdown(type(new_data))
+        # st.markdown(new_data)  # for debug
+        # st.markdown(type(new_data))  # for debug
         for theme in new_data["themes"]:
             # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
             # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
@@ -1082,12 +1078,11 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
         flip = flip_needed(given_participants_list, given_chosen_topic)
         participants = ', '.join(given_participants_list)
         issue = get_yes_or_no(given_chosen_topic)
-        st.markdown(
+        message_placeholder.markdown(
             given_participants_list[0] + ' and ' + given_participants_list[
                 1] + ' are discussing the question: ' + issue)
 
         while flip:
-            message_placeholder = st.empty()  # just for Debug
             flip_conviction(random.choice(given_participants_list), given_chosen_topic)
             flip = flip_needed(given_participants_list, given_chosen_topic)
 
@@ -1097,7 +1092,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
 
         while not all_on_board and not all_against:
 
-            message_placeholder = st.empty()  # just for Debug
+            message_placeholder = st.empty()
             loop_counter += 1
             randomizer = list(given_participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
 
@@ -1108,9 +1103,11 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                     else:
                         contras.append(item)
             for item in pros:
-                st.markdown(item + ' thinks yes')
+                message_placeholder.markdown(item + ' thinks yes')
+                message_placeholder = st.empty()
             for item in contras:
-                st.markdown(item + ' is not convinced')
+                message_placeholder.markdown(item + ' is not convinced')
+                message_placeholder = st.empty()
 
             speaker = st.session_state['speaker']
             for speaker in pros:
@@ -1118,8 +1115,8 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
                 speaker_argument = fix_third_person(speaker, speaker_argument)
                 # das ist das, womit der participant überzeugen will:
-                st.markdown(speaker + ': ')
-                st.markdown(speaker_argument)
+                message_placeholder.markdown(speaker + ": \n\n" + speaker_argument)
+                message_placeholder = st.empty()
                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
@@ -1143,8 +1140,8 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
                 # das tatsächliche gegenargument
-                st.markdown(listener + ': ')
-                st.markdown(listener_argument)
+                message_placeholder.markdown(listener + ": \n\n" + listener_argument)
+                message_placeholder = st.empty()
                 for speaker in pros:
                     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
 
@@ -1266,6 +1263,7 @@ def end_conversation():
 
 # Haupt-Streamlit-Code
 participants_list = []
+
 
 # ...
 
