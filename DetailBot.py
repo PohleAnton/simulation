@@ -1079,9 +1079,23 @@ def handle_conversation_outcome(loop_counter):
         print('Keine Einigung nach 4 Durchläufen.')
 
 
+def compare_arguments(argument_1, argument_2):
+    res = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "user",
+             "content": f"compare_arguments {argument_1} and  {argument_2}."}
+        ],
+        functions=functions,
+        function_call={'name': "compare_arguments"}
+    )
+    result = res["choices"][0]["message"]["function_call"]["arguments"]
+
+
 def next_conversation(given_participants_list, given_chosen_topic=""):
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
+
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
@@ -1137,8 +1151,10 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
 
                 # hier könnte man überlegen, ob man diesen vorgang nach hinten schiebt, sodass erst beibe sprechen
                 # aber das projekt wird langsam teuer, deswegen...
-                for listener in contras:
-                    new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+                # for listener in contras:
+                #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+
+
 
             listener = st.session_state['listener']
             for listener in contras:
@@ -1150,22 +1166,36 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 start_number = public_discussions.count() + 1
                 listener_argument = form_argument(listener, given_chosen_topic, 'no', given_participants_list)
                 listener_argument = fix_third_person(listener, listener_argument)
-                public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
                 # das tatsächliche gegenargument
                 message_placeholder.markdown(listener + ": \n\n" + listener_argument)
                 message_placeholder = st.empty()
-                for speaker in pros:
-                    new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
+                # for speaker in pros:
+                #     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
 
+            # for speaker in pros:
+            #     test = score_conviction_and_answer(listener, given_chosen_topic)
+            #     if 'no' in test[0].lower():
+            #         pros.index(speaker)
+            #         contras.append(speaker)
+            #
+            # new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
+            perspective = compare_arguments(speaker_argument, listener_argument)
             for speaker in pros:
-                test = score_conviction_and_answer(listener, given_chosen_topic)
+                new_speaker_conviction = argument_vs_conviction(perspective, speaker, given_chosen_topic)
+                test = score_conviction_and_answer(speaker, given_chosen_topic)
                 if 'no' in test[0].lower():
                     pros.remove(speaker)
                     contras.append(speaker)
+            for listener in contras:
+                new_listener_conviction = argument_vs_conviction(perspective, listener, given_chosen_topic)
+                test = score_conviction_and_answer(listener, given_chosen_topic)
+                if 'yes' in test[1].lower():
+                    contras.remove(listener)
+                    pros.append(listener)
 
-            new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
             if len(pros) == 0:
                 all_against = True
             if len(contras) == 0:
