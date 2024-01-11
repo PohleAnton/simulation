@@ -26,11 +26,24 @@ chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant
 
 
 def reset_session_state():
+    """Clears all keys and values from the session state."""
     for key in list(st.session_state.keys()):
         del st.session_state[key]
 
 
 def get_or_create_collection(client, collection_name, selector):
+    """
+        Retrieves an existing collection by name or creates a new one based on the selector.
+
+
+        Args:
+            client: The database client used to interact with collections.
+            collection_name (str): The name of the collection to retrieve or create.
+            selector (int): The selector determines the distance function - only relevant for the public_discussion
+
+        Returns:
+            The retrieved or newly created collection.
+        """
     try:
         return client.get_collection(name=collection_name)
     except Exception as e:
@@ -40,7 +53,20 @@ def get_or_create_collection(client, collection_name, selector):
             return client.create_collection(name=collection_name)
 
 
-def get_or_create_collection_with_session(client, collection_name, selector=2):
+def get_or_create_collection_with_session(client, collection_name, selector):
+    """
+        Retrieves or creates a collection from the client and puts it into the session state.
+        Is needed for streamlit, so the collection actually gets updated
+
+
+        Args:
+            client: The database client used to interact with collections.
+            collection_name (str): The name of the collection to retrieve or create.
+            selector (int): Determines the method of collection creation. Defaults to 2.
+
+        Returns:
+            Updated session state
+        """
     key = collection_name
     if key not in st.session_state['collections']:
         st.session_state['collections'][key] = get_or_create_collection(client, collection_name, selector)
@@ -56,11 +82,6 @@ def get_or_create_collection_with_session(client, collection_name, selector=2):
     return st.session_state['collections'][key]
 
 
-def get_or_create_collection_with_session(client, collection_name, selector):
-    key = f"collection_{collection_name}"
-    if key not in st.session_state['collections']:
-        st.session_state['collections'][key] = get_or_create_collection(client, collection_name, selector)
-    return st.session_state['collections'][key]
 
 
 if 'chat_history' not in st.session_state:
@@ -80,7 +101,13 @@ def display_chat():
 
 
 def handle_user_input(user_input, participants_list):
-    # Aktualisiere die Teilnehmerliste aus st.session_state
+    """
+        Processes user input in a chat application, updating the session state and conversation flow.
+
+        Args:
+            user_input (str): The input provided by the user.
+            participants_list (list): The list of participants in the conversation.
+        """
     if 'participants_list' in st.session_state:
         participants_list = st.session_state['participants_list']
 
@@ -128,6 +155,9 @@ if not 'first_run' in st.session_state:
 
 
 def shutdown_system():
+    """
+       Initiates a system shutdown based on the operating system. For presentation only
+       """
     os_name = platform.system()
 
     try:
@@ -363,12 +393,30 @@ functions = [
 
 
 def read_from_file(file_path):
+    """
+        Reads and returns the content of a specified file.
+
+        Args:
+            file_path (str): The path to the file to be read.
+
+        Returns:
+            str: The content of the file.
+        """
     with open(file_path, 'r') as file:
         content = file.read()
     return content
 
 
 def get_gpt_response(content):
+    """
+     Fetches a response from the GPT model based on the given content.
+
+     Args:
+         content (str): The content to be sent to the GPT model.
+
+     Returns:
+         The response from the GPT model, or None in case of an error.
+     """
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -383,10 +431,25 @@ def get_gpt_response(content):
 
 
 def get_response_content(given_response):
+    """
+       Extracts the content from a given GPT response.
+
+       Args:
+           given_response: The response object from the GPT model.
+
+       Returns:
+           str: The content of the response.
+       """
     return given_response.choices[0].message.content
 
 
 def fill_profile_schemes_for_participants(participants):
+    """
+       Fills profile schemes for the provided participants and adds their profile to a chroma collection
+
+       Args:
+           participants (list): A list of participant names for whom to create profiles.
+       """
     for participant in participants:
         start_number = 1 if participant_collection.count() == 0 else participant_collection.count() + 1
         input_content = profile_scheme + " for " + participant
@@ -396,6 +459,15 @@ def fill_profile_schemes_for_participants(participants):
 
 
 def join_profiles(participants):
+    """
+        Joins and returns the profiles of the given participants. Needed for the prompt
+
+        Args:
+            participants (list): List of participants whose profiles need to be joined.
+
+        Returns:
+            str: A string containing the concatenated profiles of participants.
+        """
     profiles_of_participants = ""
     for participant in participants:
         profiles_of_participants += participant_collection.get(where={'name': participant})['documents'][0]
@@ -404,6 +476,16 @@ def join_profiles(participants):
 
 
 def get_gpt_response_with_function(content, functions):
+    """
+        Fetches a GPT response for given content, utilizing specified functions.
+
+        Args:
+            content (str): The content to be processed by the GPT model.
+            functions: A list of functions to be used in processing the content.
+
+        Returns:
+            The GPT model response, or None in case of an exception.
+        """
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -420,11 +502,30 @@ def get_gpt_response_with_function(content, functions):
 
 
 def extract_timestamp(s):
+    """
+        Extracts a timestamp from a given string.
+
+        Args:
+            s (str): The string containing the timestamp.
+
+        Returns:
+            datetime: The extracted timestamp.
+        """
     timestamp_str = s[-19:]
     return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
 
 
 def get_latest_conviction_id(participant, topic):
+    """
+        Retrieves the latest conviction ID for a given participant and topic.
+
+        Args:
+            participant (str): The name of the participant.
+            topic (str): The topic of interest.
+
+        Returns:
+            The latest conviction ID, or None if not found.
+        """
     collection_name = participant.replace(' ', '') + 'Conviction'
     collection = None
     for collection_db in chroma.list_collections():
@@ -445,6 +546,16 @@ def get_latest_conviction_id(participant, topic):
 
 
 def get_latest_conviction(participant, topic):
+    """
+        Retrieves the latest conviction for a given participant and topic.
+
+        Args:
+            participant (str): The name of the participant.
+            topic (str): The topic of interest.
+
+        Returns:
+            The latest conviction document or an empty string if not found.
+        """
     collection_name = 'collection_' + participant.replace(' ', '') + 'Conviction'
     try:
         id = get_latest_conviction_id(participant, topic)
@@ -461,6 +572,15 @@ def get_latest_conviction(participant, topic):
 
 
 def get_structured_conversation_with_gpt(given_conversation):
+    """
+        Converts a given conversation into a structured format using GPT.
+
+        Args:
+            given_conversation: The conversation to be structured.
+
+        Returns:
+            The structured data from the conversation.
+        """
     vector_test = get_gpt_response_with_function('find_topics'
                                                  + get_response_content(given_conversation),
                                                  functions)
@@ -474,14 +594,20 @@ def get_structured_conversation_with_gpt(given_conversation):
 
 
 def write_conviction_collection(participant, topic, arguments=''):
+    """
+        Writes conviction to a collection for a participant and topic, creating or updating as necessary.
+
+        Args:
+            participant (str): The participant for whom the conviction is related.
+            topic (str): The topic of the conviction.
+            arguments (str, optional): Additional arguments for conviction. Default is an empty string.
+        """
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     collection = get_or_create_collection_with_session(chroma, collection_name, 2)
     conv = get_latest_conviction(participant, topic)
 
     if conv == '' or arguments != '':
-        # 'update_conviction' falls Überzeugung existiert und Argumente gegeben sind
-        # oder 'create_conviction' falls keine Überzeugung existiert
         function_call_name = 'update_conviction' if conv != '' else 'create_conviction'
         res = openai.ChatCompletion.create(
             model=model,
@@ -496,39 +622,22 @@ def write_conviction_collection(participant, topic, arguments=''):
         res_json = json.loads(result)
         final = fix_third_person(participant, res_json['conviction'])
     else:
-        # Keine Änderung notwendig, da keine Argumente gegeben und Überzeugung bereits vorhanden
         final = conv
-
-
     collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
-
-def safety_conviction(participant, topic):
-    collection_name = participant.replace(' ', '') + 'Conviction'
-    timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    try:
-        res = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "user", "content": f"create_conviction for {participant} subject {topic}."}
-            ],
-            functions=functions,
-            function_call={'name': 'create_conviction'}
-        )
-        result = res["choices"][0]["message"]["function_call"]["arguments"]
-        res_json = json.loads(result)
-        final = make_first_person(res_json['conviction'])  # Sicherstellen, dass es in erster Person ist
-
-
-        conviction_collection = get_or_create_collection_with_session(chroma, collection_name, 2)
-        conviction_collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
-    except (KeyError, json.JSONDecodeError) as e:
-        print(f"Fehler bei der Erstellung der Überzeugung für {participant} zum Thema {topic}: {e}")
 
 
 
 def find_core_issues(topic):
+    """
+        Uses GPT to identify the core issues associated with a given topic. Posed as a Yes/No Question. Is used for checking conviction
+
+        Args:
+            topic (str): The topic to analyze for core issues.
+
+        Returns:
+            The identified core issue as a Yes/No Question or None if not found.
+        """
     try:
         response = openai.ChatCompletion.create(
             model=model,
@@ -683,44 +792,33 @@ def add_knowledge_to_profile(participant, given_topics):
 
 def get_yes_or_no(topic):
     """
-           Queries the public discussions database and returns a specified number of results.
+       Gets the yes or no question associated with a given topic
 
-           This function executes a query on the public discussions database using the provided query text.
-           The number of results to return is specified by the 'results' parameter, with a default value of 1.
-           Careful - throws exception when too many documents are requested
+       Args:
+           topic (str): The topic to be queried in public discussions.
 
-           Args:
-               query (str): The query text to be used for searching the public discussions.
-               results (int, optional): The number of results to return. Defaults to 1 if not specified.
-
-           Returns:
-               list: A list of results from the public discussions database based on the query.
-           """
+       Returns:
+           A string response indicating 'yes' or 'no'.
+       """
     n = public_discussions.get(where={'theme': topic})
     t = n['metadatas'][0]['issue']
     return t
 
 
-def query_public_discussions(query, results=10, precision=0.4):
-    """
-       Queries the public discussions database and returns a specified number of results.
-
-       This function executes a query on the public discussions database using the provided query text.
-       The number of results to return is specified by the 'results' parameter, with a default value of 1.
-       Careful - throws exception when too many documents are requested
-
-       Args:
-           query (str): The query text to be used for searching the public discussions.
-           results (int, optional): The number of results to return. Defaults to 1 if not specified.
-
-       Returns:
-           list: A list of results from the public discussions database based on the query.
-       """
-    result = public_discussions.query(query_texts=query, n_results=results)
-    return result
 
 
 def get_best_document(topic, participants_list, precision):
+    """
+      Retrieves the best document related to a topic, considering the list of participants and precision level.
+
+      Args:
+          topic (str): The topic for which the document is to be retrieved.
+          participants_list (list): The list of participants involved in the topic.
+          precision (float): The precision threshold for selecting the document.
+
+      Returns:
+          str: The best matching document, or an empty string if no suitable document is found.
+      """
     r = public_discussions.query(query_texts=topic)
     checker = set(participants_list)
     final = []
@@ -744,13 +842,28 @@ def get_best_document(topic, participants_list, precision):
 
 
 def get_prior_discussion(topic, participants_list):
-    # ToDo: Note to self: Vielleicht kann ich die query public discussions Methoden zusammenschrumpfen. Noch sind sie einzeln. Man weiß ja nie...
+    """
+       Retrieves prior discussions related to a given topic and list of participants.
+
+       Args:
+           topic (str): The topic of the discussion.
+           participants_list (list): List of participants involved in the discussion.
+
+       Returns:
+           str: Combined string of previous discussions, if any, otherwise an empty string.
+       """
     r = get_best_document(topic, participants_list, 0.25)
     combined_string = "\n".join(r) if len(r) > 1 else ''
     return combined_string
 
 
 def get_convincing_factors():
+    """
+        Reads and returns the content from a predefined file containing convincing factors.
+
+        Returns:
+            str: Content of the 'ConvincingFactors.txt' file.
+        """
     # consider this: https://chat.openai.com/share/51a41d96-c11e-4250-bc8f-a1d862ab3be1
     # step back prompted, file will exist
     dir_name = './FilesForDocker'
@@ -764,6 +877,14 @@ def get_convincing_factors():
 
 
 def get_stratey():
+    """
+        Reads a file containing strategies and returns a random selection of strategies along with logical reasoning and emotional appeal.
+
+        Returns:
+            str: A string combining a logical reasoning, emotional appeal, and two randomly selected strategies.
+
+        """
+
     # consider this: https://chat.openai.com/share/05e5d5e0-ffec-4205-8705-8067ae5c8764
     # step back prompted, file will exist
     dir_name = './FilesForDocker'
@@ -782,6 +903,18 @@ def get_stratey():
 
 
 def form_argument(speaker, chosen_topic, believe, participants_list):
+    """
+       Forms an argument or counterargument for a speaker based on a chosen topic, belief, and prior discussions.
+
+       Args:
+           speaker (str): The person forming the argument.
+           chosen_topic (str): The topic being discussed.
+           believe (str): Indicates whether to form an argument ('yes') or counterargument ('no').
+           participants_list (list): List of participants involved in the discussion.
+
+       Returns:
+           str: The formulated argument or counterargument.
+       """
     strategies = get_stratey()
     strategy_1 = strategies[0]
     strategy_2 = strategies[1]
@@ -831,6 +964,16 @@ def form_argument(speaker, chosen_topic, believe, participants_list):
 
 
 def judge_concivtion(participant, topic):
+    """
+       Judges the conviction of a participant on a given topic and returns a binary 'yes' or 'no' response.
+
+       Args:
+           participant (str): The participant whose conviction is being judged.
+           topic (str): The topic of the conviction.
+
+       Returns:
+           str: 'Yes' or 'No' based on the judgment, or an error message if an issue occurs.
+       """
     try:
         iss = public_discussions.get(where={'theme': topic})
         issue = iss.get('metadatas', [{}])[0].get('issue')
@@ -856,6 +999,17 @@ def judge_concivtion(participant, topic):
 
 
 def update_conviction(participant, topic, new_conviction):
+    """
+        Updates the conviction for a participant on a specific topic.
+
+        Args:
+            participant (str): The participant whose conviction is being updated.
+            topic (str): The topic related to the conviction.
+            new_conviction (str): The updated conviction text.
+
+        Returns:
+            str: Confirmation message of the update, or an error message if an issue occurs.
+        """
     if not new_conviction or not topic:
         return "Conviction or topic cannot be empty."
 
@@ -872,6 +1026,17 @@ def update_conviction(participant, topic, new_conviction):
 
 
 def argument_vs_conviction(argument, listener, chosen_topic):
+    """
+        Evaluates an argument against a listener's conviction on a chosen topic and updates the conviction accordingly.
+
+        Args:
+            argument (str): The argument to be evaluated.
+            listener (str): The listener whose conviction is challenged.
+            chosen_topic (str): The topic related to the argument and conviction.
+
+        Returns:
+            str: The updated conviction after evaluating the argument.
+        """
     con = get_latest_conviction(listener, chosen_topic)
     list = get_convincing_factors()
     judge = openai.ChatCompletion.create(
@@ -898,31 +1063,20 @@ def argument_vs_conviction(argument, listener, chosen_topic):
     return ans
 
 
-def lets_goooooo(participants, chosen_topic):
-    all_on_board = True
-    all_against = True
-
-    for participant in participants:
-        res = judge_concivtion(participant, chosen_topic)
-
-        if 'no' in res.lower():
-            all_on_board = False
-            if not all_against:
-                break  # Frühzeitiger Abbruch, da das Ergebnis feststeht
-        elif 'yes' in res.lower():
-            all_against = False
-            if not all_on_board:
-                break  # Frühzeitiger Abbruch, da das Ergebnis feststeht
-        else:
-            # Fehlerbehandlung für den Fall, dass judge_concivtion keinen klaren 'yes' oder 'no' Wert zurückgibt
-            print(f"Unerwartete Antwort von judge_concivtion: {res}")
-            return False, False
-
-    return all_on_board, all_against
 
 
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
 def make_first_person(conviction):
+    """
+        Deprecated and replace with fix_third_person
+        Rewrites a given conviction text to use only first-person pronouns.
+
+        Args:
+            conviction (str): The conviction text to be rewritten.
+
+        Returns:
+            str: The rewritten conviction text in first person.
+        """
     # Sidenote: There was a suprising amount of step back prompting involved to get this.
     # consider this: https://chat.openai.com/share/7483b007-f019-45bd-9365-65e06f69d478
     judge = openai.ChatCompletion.create(
@@ -949,6 +1103,16 @@ def make_first_person(conviction):
 
 
 def score_conviction_and_answer(participant, topic):
+    """
+        Scores a participant's conviction on a topic and provides an answer based on the conviction.
+
+        Args:
+            participant (str): The participant whose conviction is being scored.
+            topic (str): The topic related to the conviction.
+
+        Returns:
+            tuple: A tuple containing the answer and score of the conviction.
+        """
     # je "trivialer" das Thema, umso besser erzeugt GPT überzeugungen passend zur Person. Je abstrakter das Thema, umso
     # unzuverlässiger die Antworten (gilt auch für GPT4) - deswegen werden hier 2 separate Werte genutzt, da die Werte konsistenter sind.
     # das wird außerdem als failsafe verwendet, damit nicht sofort alle überzeugt sind - im grunde spricht ja nichts dagegen, macht aber
@@ -971,6 +1135,16 @@ def score_conviction_and_answer(participant, topic):
 
 
 def flip_conviction(participant, topic):
+    """
+       Flips the conviction of a participant on a topic to express the opposite opinion. Needed for showcase
+
+       Args:
+           participant (str): The participant whose conviction is to be flipped.
+           topic (str): The topic related to the conviction.
+
+       Returns:
+           str: The flipped conviction text.
+       """
     conviction = get_latest_conviction(participant, topic)
     # hier nun der Failsafe: Um die Präsentation interessant zu gestalten, soll sichergestellt werden, dass zu Beginn nicht alle die gleiche überzeugung haben.
     result = openai.ChatCompletion.create(
@@ -985,6 +1159,16 @@ def flip_conviction(participant, topic):
 
 
 def flip_needed(particants_list, topic):
+    """
+     Determines if a flip in convictions is needed for a list of participants on a topic. Needed for showcase
+
+     Args:
+         participants_list (list): The list of participants to check.
+         topic (str): The topic being discussed.
+
+     Returns:
+         bool: True if a flip in convictions is needed, False otherwise.
+     """
     both_yes = True
     both_no = True
     answers = []
@@ -1003,6 +1187,12 @@ def flip_needed(particants_list, topic):
 
 
 def reset_convictions(participants_list):
+    """
+       Resets the convictions for a list of participants.
+
+       Args:
+           participants_list (list): The list of participants whose convictions are to be reset.
+       """
     for participant in participants_list:
         collection_name = participant.replace(' ', '') + 'Conviction'
         try:
@@ -1016,8 +1206,21 @@ def reset_convictions(participants_list):
 
 
 def fix_third_person(given_name, given_text):
-    # note: das wirkt sehr ähnlich zu make_first_person, löst aber ein anderes problem: wenn aus dem memory stream geschöpft wird, kommt auch der name des damaligen sprechers mit
-    # und zwar auch, wenn es erneut derselbe sprecher - dies führt zuweilen dazu, dass Personen von sich selbst in der 3. Person sprechen
+    """
+        Removes the given name from the given text to avoid third-person references by the same speaker.
+        Neccesary
+        a) To remove name from conviction. Example "As Karl Marx I believe..." leads to a situation where nobody is ever convinced.
+        b) Assume the original conversation contains something like
+        Karl Marx: Well, I have been thinking about the simulation hypothesis
+            --> then on retrieval, Karl Marx himself might say:
+                "As proposed by Karl Marx..."
+        Args:
+            given_name (str): The name to be removed from the text.
+            given_text (str): The text from which the name should be removed.
+
+        Returns:
+            str: The text with the given name removed.
+        """
     res = openai.ChatCompletion.create(
         model=model,
         messages=[
@@ -1034,6 +1237,15 @@ def fix_third_person(given_name, given_text):
 
 
 def handle_conversation_outcome(loop_counter):
+    """
+        Handles the outcome of a conversation based on the number of loops.
+
+        Args:
+            loop_counter (int): The number of loops completed in the conversation.
+
+        Note:
+            Prints a message based on whether a resolution was reached within 4 loops or not.
+        """
     if loop_counter < 4:
         print('Ergebnis der Konversation wurde innerhalb von 4 Durchläufen erreicht.')
         # Weitere Logik hier, falls nötig
@@ -1042,6 +1254,16 @@ def handle_conversation_outcome(loop_counter):
 
 
 def compare_arguments(argument_1, argument_2):
+    """
+       Compares two arguments and provides a perspective on their content.
+
+       Args:
+           argument_1 (str): The first argument to be compared.
+           argument_2 (str): The second argument to be compared.
+
+       Returns:
+           The perspective or comparison result of the two arguments.
+       """
     res = openai.ChatCompletion.create(
         model=model,
         messages=[
@@ -1060,7 +1282,23 @@ def compare_arguments(argument_1, argument_2):
 
 
 
-def next_conversation(given_participants_list, given_chosen_topic=""):
+def next_conversation(given_participants_list, given_chosen_topic):
+    """
+      Conducts the next conversation round among given participants on a chosen topic. It involves flipping convictions
+      if necessary, forming arguments and counterarguments, comparing them, and updating convictions based on these discussions.
+
+      Args:
+          given_participants_list (list): A list of participants involved in the conversation.
+          given_chosen_topic (str): The chosen topic for the conversation.
+
+      This function follows these steps:
+      - Checks if conviction flips are needed and performs them if necessary. For showcase
+      - Iterates through multiple rounds of conversation, where participants form arguments and counterarguments.
+      - Arguments are compared, and convictions are updated based on these discussions.
+      - The function tracks the number of conversation loops and handles the conversation outcome accordingly.
+
+
+      """
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
 
@@ -1212,6 +1450,16 @@ prompt = (
 
 
 def make_final_prompt(issue, answer):
+    """
+       Generates a final prompt based on an issue and an answer, with a random choice between a pessimistic or optimistic response.
+
+       Args:
+           issue (str): The issue that was addressed.
+           answer (str): The answer provided to the issue.
+
+       Returns:
+           tuple: A tuple containing the final prompt and the choice indicator (0 for pessimistic, 1 for optimistic).
+       """
     choice = random.randint(0, 1)
     # wegen GPTS unerträglicher Tendenz zur Hoffnung!
     if choice == 0:
@@ -1226,15 +1474,19 @@ def make_final_prompt(issue, answer):
 
 
 def start_first_conversation():
+    """
+       Initiates the first conversation, fills profile schemes for participants, and extracts topics from the conversation.
+
+       Returns:
+           tuple: A tuple containing the string of the first conversation and the extracted topics.
+       """
     fill_profile_schemes_for_participants(participants_list)
     prompt_for_first_conversation = prompt + join_profiles(participants_list)
     first_conversation_res = get_gpt_response(prompt_for_first_conversation)
     first_conversation_str = get_response_content(first_conversation_res)
-
     extracted_topics = extract_topics_of_conversation(first_conversation_res)
     for participant in participants_list:
         add_knowledge_to_profile(participant, extracted_topics)
-
     return first_conversation_str, extracted_topics
 
 
@@ -1246,27 +1498,6 @@ def start_first_conversation():
 
 
 # --------------------------------------- Steamlit ab hier ---------------------------------------
-
-def start_conversation():
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        first_conv_str, extracted_topics = start_first_conversation()
-        message_placeholder.markdown(first_conv_str)
-    return extracted_topics
-
-
-def handle_user_input(user_input, participants_list):
-    if user_input.lower() == "start":
-        start_conversation()
-    elif user_input.lower() == "end":
-        end_conversation()  # Eine Funktion, die definiert, was bei "End" passieren soll
-    else:
-        next_conversation(user_input)
-
-
-def end_conversation():
-    with st.chat_message("assistant"):
-        st.markdown("Die Konversation wurde beendet.")
 
 
 # Haupt-Streamlit-Code
