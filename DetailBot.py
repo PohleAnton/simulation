@@ -22,7 +22,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 
 
-# chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+#chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
 def reset_session_state():
@@ -556,7 +556,7 @@ def get_latest_conviction(participant, topic):
         Returns:
             The latest conviction document or an empty string if not found.
         """
-    collection_name = 'collection_' + participant.replace(' ', '') + 'Conviction'
+    collection_name = participant.replace(' ', '') + 'Conviction'
     try:
         id = get_latest_conviction_id(participant, topic)
         if id:
@@ -1282,22 +1282,7 @@ def compare_arguments(argument_1, argument_2):
 
 
 
-def next_conversation(given_participants_list, given_chosen_topic):
-    """
-      Conducts the next conversation round among given participants on a chosen topic. It involves flipping convictions
-      if necessary, forming arguments and counterarguments, comparing them, and updating convictions based on these discussions.
-
-      Args:
-          given_participants_list (list): A list of participants involved in the conversation.
-          given_chosen_topic (str): The chosen topic for the conversation.
-
-      This function follows these steps:
-      - Checks if conviction flips are needed and performs them if necessary. For showcase
-      - Iterates through multiple rounds of conversation, where participants form arguments and counterarguments.
-      - Arguments are compared, and convictions are updated based on these discussions.
-      - The function tracks the number of conversation loops and handles the conversation outcome accordingly.
-
-      """
+def next_conversation(given_participants_list, given_chosen_topic=""):
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
 
@@ -1323,7 +1308,6 @@ def next_conversation(given_participants_list, given_chosen_topic):
         contras = []
 
         while not all_on_board and not all_against:
-
             message_placeholder = st.empty()
             loop_counter += 1
             randomizer = list(given_participants_list)  # Erstelle eine Kopie, um die Original-Liste nicht zu verändern
@@ -1359,11 +1343,11 @@ def next_conversation(given_participants_list, given_chosen_topic):
                 #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
             listener = st.session_state['listener']
-            for listener in contras:
-                test = score_conviction_and_answer(listener, given_chosen_topic)
-                if 'yes' in test[0].lower():
-                    contras.remove(listener)
-                    pros.append(listener)
+            # for listener in contras:
+            #     test = score_conviction_and_answer(listener, given_chosen_topic)
+            #     if 'yes' in test[0].lower():
+            #         contras.remove(listener)
+            #         pros.append(listener)
             for listener in contras:
                 start_number = public_discussions.count() + 1
                 listener_argument = form_argument(listener, given_chosen_topic, 'no', given_participants_list)
@@ -1374,16 +1358,7 @@ def next_conversation(given_participants_list, given_chosen_topic):
                 # das tatsächliche gegenargument
                 message_placeholder.markdown(listener + ": \n\n" + listener_argument)
                 message_placeholder = st.empty()
-                # for speaker in pros:
-                #     new_speaker_conviction = argument_vs_conviction(listener_argument, speaker, given_chosen_topic)
 
-            # for speaker in pros:
-            #     test = score_conviction_and_answer(listener, given_chosen_topic)
-            #     if 'no' in test[0].lower():
-            #         pros.index(speaker)
-            #         contras.append(speaker)
-            #
-            # new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
             perspective = compare_arguments(speaker_argument, listener_argument)
             for speaker in pros:
                 new_speaker_conviction = argument_vs_conviction(perspective, speaker, given_chosen_topic)
@@ -1398,12 +1373,17 @@ def next_conversation(given_participants_list, given_chosen_topic):
                     contras.remove(listener)
                     pros.append(listener)
 
+
             if len(pros) == 0:
                 all_against = True
                 st.markdown('The Nay-sayers have it')
-            if len(pros) == 0:
+            if len(contras) == 0:
                 all_on_board = True
                 st.markdown('Everybody is convinced')
+            if loop_counter > 3:
+                st.markdown('Um Token zu sparen, wird das Experiment an dieser Stelle abgebrochen')
+                # nicht repräsentativ, um schleife zu beenden
+                all_against = True
 
         st.session_state['all_on_board'] = all_on_board
         st.session_state['all_against'] = all_against
@@ -1431,22 +1411,33 @@ def next_conversation(given_participants_list, given_chosen_topic):
                 st.markdown(result['choices'][0]['message']['content'])
 
 
-        else:
-            st.markdown('Um Token zu sparen, wird das Experiment an dieser Stelle abgebrochen')
+
 
 
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
 
+# Dieser Prompt erwähnt the Simulation Hypothesis nur halb explizit - es taucht dennoch in ca. 80 % aller Konversationen auf
+# Entfernt man es aus 3., sind es geschätzt immernoch ca. 60 %
+# prompt = (
+#     "Write a conversation with the following setup: "
+#     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
+#     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
+#     "2. Long and detailed conversation."
+#     "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
+#     "4. Setting: At the beach. Everybody is relaxed "
+#     "5. Involved Individuals: "
+# )
+#zum Token sparen wird es hier aber explizit erwähnt
 prompt = (
     "Write a conversation with the following setup: "
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
     "very much. They enjoy intense intellectual arguments and do not hold back.Deep Talk "
     "2. Long and detailed conversation."
-    "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
-    "4. Setting: At the beach. Everybody is relaxed "
-    "5. Involved Individuals: "
+    "3. Topics: The Simulation Hypothesis and its implications"
+    "4. Further topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
+    "5. Setting: At the beach. Everybody is relaxed "
+    "6. Involved Individuals: "
 )
-
 
 def make_final_prompt(issue, answer):
     """
@@ -1472,21 +1463,6 @@ def make_final_prompt(issue, answer):
     return prompt, choice
 
 
-def start_first_conversation():
-    """
-       Initiates the first conversation, fills profile schemes for participants, and extracts topics from the conversation.
-
-       Returns:
-           tuple: A tuple containing the string of the first conversation and the extracted topics.
-       """
-    fill_profile_schemes_for_participants(participants_list)
-    prompt_for_first_conversation = prompt + join_profiles(participants_list)
-    first_conversation_res = get_gpt_response(prompt_for_first_conversation)
-    first_conversation_str = get_response_content(first_conversation_res)
-    extracted_topics = extract_topics_of_conversation(first_conversation_res)
-    for participant in participants_list:
-        add_knowledge_to_profile(participant, extracted_topics)
-    return first_conversation_str, extracted_topics
 
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
@@ -1497,7 +1473,32 @@ def start_first_conversation():
 
 
 # --------------------------------------- Steamlit ab hier ---------------------------------------
+def start_first_conversation():
+    """
+           Initiates the first conversation, fills profile schemes for participants, and extracts topics from the conversation.
 
+           Returns:
+               tuple: A tuple containing the string of the first conversation and the extracted topics.
+           """
+    fill_profile_schemes_for_participants(participants_list)
+    prompt_for_first_conversation = prompt + join_profiles(participants_list)
+    first_conversation_res = get_gpt_response(prompt_for_first_conversation)
+    first_conversation_str = get_response_content(first_conversation_res)
+    extracted_topics = extract_topics_of_conversation(first_conversation_res)
+    for participant in participants_list:
+        add_knowledge_to_profile(participant, extracted_topics)
+    return first_conversation_str, extracted_topics
+
+def start_conversation():
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        first_conv_str, extracted_topics = start_first_conversation()
+        message_placeholder.markdown(first_conv_str)
+    return extracted_topics
+
+def end_conversation():
+    with st.chat_message("assistant"):
+        st.markdown("Die Konversation wurde beendet.")
 
 # Haupt-Streamlit-Code
 participants_list = []
