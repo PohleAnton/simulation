@@ -1297,7 +1297,6 @@ def next_conversation(given_participants_list, given_chosen_topic):
       - Arguments are compared, and convictions are updated based on these discussions.
       - The function tracks the number of conversation loops and handles the conversation outcome accordingly.
 
-
       """
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
