@@ -30,42 +30,6 @@ def reset_session_state():
         del st.session_state[key]
 
 
-def get_file_content_or_fetch_from_gpt(file_name, prompt, extract_function_name):
-    dir_name = './FilesForDocker'
-    current_dir = Path(__file__).parent
-    dir_path = current_dir / dir_name
-    file_path = dir_path / file_name
-
-    dir_path.mkdir(parents=True, exist_ok=True)
-
-    if file_path.exists():
-        with open(file_path, 'r') as file:
-            return file.read()
-
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = openai.ChatCompletion.create(
-        model=model,
-        messages=[{"role": "user",
-                   "content": f"{extract_function_name} from {response['choices'][0]['message']['content']}"}],
-        functions=functions
-    )
-
-    points_json = unstringyfy(raw)
-    # try:
-    #     points_json = json.loads(raw)
-    # except json.JSONDecodeError:
-    #     points_json = json.dumps(raw)
-
-    points = points_json['headings']
-    with open(file_path, 'w') as file:
-        file.write(points)
-
-    return points
-
-
 def get_or_create_collection(client, collection_name, selector):
     try:
         return client.get_collection(name=collection_name)
@@ -90,12 +54,6 @@ def get_or_create_collection_with_session(client, collection_name, selector=2):
             st.error(f"Fehler beim Aktualisieren der Sammlungsinformationen: {e}")
 
     return st.session_state['collections'][key]
-
-
-##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
-##ToDo Vielleicht kann das ja "irgendjemand" recherchieren
-if 'collections' not in st.session_state:
-    st.session_state['collections'] = {}
 
 
 def get_or_create_collection_with_session(client, collection_name, selector):
@@ -163,8 +121,8 @@ if 'listener_argument' not in st.session_state:
     st.session_state['listener_argument'] = ''
 if 'speaker_argument' not in st.session_state:
     st.session_state['speaker_argument'] = ''
-
-##ToDo: Das steht jetzt hier mal exemplarisch, um ggf. zw. 1. und folgenden Converstationen unterscheiden zu können...
+if 'collections' not in st.session_state:
+    st.session_state['collections'] = {}
 if not 'first_run' in st.session_state:
     st.session_state['first_run'] = False
 
@@ -185,7 +143,6 @@ def shutdown_system():
         print(f"Error during shutdown: {e}")
 
 
-##ToDo @Pauline: Ich glaube, es ist so:
 public_discussions = get_or_create_collection_with_session(chroma, "public_discussions", 1)
 participant_collection = get_or_create_collection_with_session(chroma, "participants", 2)
 
@@ -256,13 +213,13 @@ functions = [
     },
     {
         "name": "compare_arguments",
-        "description": "A function that compares two arguments and formulates a nuanced perspective resulting from that comparison",
+        "description": "A function that compares two arguments and formulates a perspective resulting from that comparison. Bold and decisive",
         "parameters": {
             "type": "object",
             "properties": {
                 "perspective": {
                     "type": "string",
-                    "description": "the new perspective. How a person might say it"
+                    "description": "the new perspective. How a person might say it. "
                 },
             },
             "required": ["argument_1", "argument_2"]
@@ -446,31 +403,6 @@ def join_profiles(participants):
     return profiles_of_participants
 
 
-# vorerst deprecated. bleibt hier. safety first
-# def compare_themes(prior_topic, new_topics):
-#
-#     updated_topics = []
-#     for new in new_topics:
-#         replaced = False
-#         for prior in prior_topic:
-#             judge = openai.ChatCompletion.create(
-#                 model=model,
-#                 messages=[
-#                     {"role": "system",
-#                      "content": "You compare 2 Strings and asses if they refer to the same concept. You only answer yes or no"},
-#                     {"role": "user",
-#                      "content": f"Does {prior} mean the same thing as {new}"}
-#                 ],
-#             )
-#             if 'Yes' in judge['choices'][0]['message']['content'] or 'yes' in judge['choices'][0]['message']['content']:
-#                 updated_topics.append(prior)
-#                 replaced = True
-#
-#         if not replaced:
-#             updated_topics.append(new)
-#     return updated_topics
-
-
 def get_gpt_response_with_function(content, functions):
     try:
         response = openai.ChatCompletion.create(
@@ -493,7 +425,6 @@ def extract_timestamp(s):
 
 
 def get_latest_conviction_id(participant, topic):
-    # print(f"HOLE ID DER ÜBERZEUGUNG für: {participant} zu {topic}")
     collection_name = participant.replace(' ', '') + 'Conviction'
     collection = None
     for collection_db in chroma.list_collections():
@@ -543,11 +474,8 @@ def get_structured_conversation_with_gpt(given_conversation):
 
 
 def write_conviction_collection(participant, topic, arguments=''):
-    # Konsolidierung der Funktionalität von 'create_conviction' und 'update_conviction'
     collection_name = participant.replace(' ', '') + 'Conviction'
     timestamp_string = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # Überprüfe, ob die Sammlung existiert und hole die letzte Überzeugung
     collection = get_or_create_collection_with_session(chroma, collection_name, 2)
     conv = get_latest_conviction(participant, topic)
 
@@ -571,7 +499,7 @@ def write_conviction_collection(participant, topic, arguments=''):
         # Keine Änderung notwendig, da keine Argumente gegeben und Überzeugung bereits vorhanden
         final = conv
 
-    # Füge die neue oder aktualisierte Überzeugung zur Sammlung hinzu
+
     collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
@@ -581,7 +509,7 @@ def safety_conviction(participant, topic):
 
     try:
         res = openai.ChatCompletion.create(
-            model=model,  # Verwende das im Rest des Codes definierte Modell
+            model=model,
             messages=[
                 {"role": "user", "content": f"create_conviction for {participant} subject {topic}."}
             ],
@@ -592,14 +520,12 @@ def safety_conviction(participant, topic):
         res_json = json.loads(result)
         final = make_first_person(res_json['conviction'])  # Sicherstellen, dass es in erster Person ist
 
-        # Verwende get_or_create_collection für Konsistenz
+
         conviction_collection = get_or_create_collection_with_session(chroma, collection_name, 2)
         conviction_collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
     except (KeyError, json.JSONDecodeError) as e:
         print(f"Fehler bei der Erstellung der Überzeugung für {participant} zum Thema {topic}: {e}")
-    # maybe this:
-    # chroma.get_collection(collection_name)
-    # globals()[collection_name].add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
+
 
 
 def find_core_issues(topic):
@@ -627,9 +553,21 @@ def find_core_issues(topic):
 
 
 def unstringyfy(data_str):
+    """
+         Some GPT Responses are in " " - even though they shouldn't.
+         This function somewhat addresses that - there will also be a try-except block in extract_topics. But that takes
+         Tokens, so this is tried first
+          Args:
+              query (data_str): The GPT response that might or might not be structured as as dict
+
+
+          Returns:
+              parsed_data: A dict for further use
+          """
     if isinstance(data_str, dict):
         # Wenn data_str bereits ein Dictionary ist, gib es unverändert zurück
-        return data_str
+        parsed_data =data_str
+        return parsed_data
 
     try:
         parsed_data = json.loads(data_str)
@@ -643,6 +581,26 @@ def unstringyfy(data_str):
 
 # Sucht sich die Themen der Conversation zusammen
 def extract_topics_of_conversation(given_conversation):
+    """
+              This method takes a GPT generated conversation and passes it to a function_call
+              The function_call findes sub-headlines for every topic that was discussed in a conversation.
+              It then splits the conversation in smaller parts and connects each part to its corresponding headline.
+              The  parts are stored in the vectordatase for retrieval.
+              It also writes every sub-headline into a python list, which will be used for
+              a) the frontend, so that the user can choose a topic to be discussed further
+              and b) for a variety of backend logic, i.e. get the topics, the questions that a topic raises...
+
+
+
+            Args:
+               given_conversation: A GPT generated conversation
+
+
+            Returns:
+               conversation_topics: A list of topics found in the conversation
+           """
+
+
     conversation_topics = []
     chroma_metadatas = []
     chroma_documents = []
@@ -663,10 +621,6 @@ def extract_topics_of_conversation(given_conversation):
         )
         content = vector_test["choices"][0]["message"]["function_call"]["arguments"]
         structured_data = unstringyfy(content)
-        # try:
-        #     structured_data = json.loads(content)
-        # except json.decoder.JSONDecodeError:
-        #     structured_data = json.dumps(content)
         given_topics = ', '.join(structured_data['themes'])
     else:
         text = get_response_content(given_conversation)
@@ -684,20 +638,12 @@ def extract_topics_of_conversation(given_conversation):
         function_call={'name': 'split_conversation'}
     )
     data = res_data['choices'][0]['message']['function_call']['arguments']
-    # print("data nach Auswahl:\n", data, "\n")
+
     new_data = unstringyfy(data)
-    # try:
-    #     new_data = json.loads(data)
-    # except json.decoder.JSONDecodeError:
-    #     new_data = json.dumps(data)
-    if not st.session_state['first_finished']:
-        # st.markdown(new_data)  # for debug
-        # st.markdown(type(new_data))  # for debug
+
+
+    try:
         for theme in new_data["themes"]:
-            # das ist für den Fall, dass man das Chroma-Volume nicht jedes mal löscht: In dem falle wird in den vergangenen
-            # Konversationen nach ähnlichen Themen geschaut und diese werden gleichgesetzt, sodass auf mehr memory Stream
-            # zugegriffen werden kann. dies ist aber token intensiv und braucht relativ viele API calls, sollte also wenigstens
-            # beim entwickeln vermiedern werden
             for prior_topic in st.session_state['all_topics']:
                 judge = openai.ChatCompletion.create(
                     model=model,
@@ -719,21 +665,37 @@ def extract_topics_of_conversation(given_conversation):
 
         chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
-        st.session_state['first_finished'] = True
+
 
         return conversation_topics
+    except Exception:
+        # there are cases where the function call return a poorly formatted result. these cases should be handled by now
+        # this is just a failsafe
+        a = extract_topics_of_conversation(given_conversation)
 
-        # notiz: es gab hier noch einen block
-        # if st.session_state['first_finished']: dieser wird aber im aktuellen setup nicht mehr benötigt
 
 
 def add_knowledge_to_profile(participant, given_topics):
-    # ist ein Überbleibsel aus komplexerem Code,.
+    # there used to be knowledge generation from wikipedia which has been dropped because GPT knows enough.
     for topic in given_topics:
         write_conviction_collection(participant, topic)
 
 
 def get_yes_or_no(topic):
+    """
+           Queries the public discussions database and returns a specified number of results.
+
+           This function executes a query on the public discussions database using the provided query text.
+           The number of results to return is specified by the 'results' parameter, with a default value of 1.
+           Careful - throws exception when too many documents are requested
+
+           Args:
+               query (str): The query text to be used for searching the public discussions.
+               results (int, optional): The number of results to return. Defaults to 1 if not specified.
+
+           Returns:
+               list: A list of results from the public discussions database based on the query.
+           """
     n = public_discussions.get(where={'theme': topic})
     t = n['metadatas'][0]['issue']
     return t
@@ -1090,12 +1052,17 @@ def compare_arguments(argument_1, argument_2):
         function_call={'name': "compare_arguments"}
     )
     result = res["choices"][0]["message"]["function_call"]["arguments"]
+    try:
+        res = json.loads(result)
+        return res.get('prespective')
+    except Exception:
+        return result
+
 
 
 def next_conversation(given_participants_list, given_chosen_topic=""):
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
-
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
@@ -1154,8 +1121,6 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 # for listener in contras:
                 #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
-
-
             listener = st.session_state['listener']
             for listener in contras:
                 test = score_conviction_and_answer(listener, given_chosen_topic)
@@ -1166,7 +1131,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 start_number = public_discussions.count() + 1
                 listener_argument = form_argument(listener, given_chosen_topic, 'no', given_participants_list)
                 listener_argument = fix_third_person(listener, listener_argument)
-                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
+                public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
                 # das tatsächliche gegenargument
@@ -1192,17 +1157,17 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
             for listener in contras:
                 new_listener_conviction = argument_vs_conviction(perspective, listener, given_chosen_topic)
                 test = score_conviction_and_answer(listener, given_chosen_topic)
-                if 'yes' in test[1].lower():
+                if 'yes' in test[0].lower():
                     contras.remove(listener)
                     pros.append(listener)
 
             if len(pros) == 0:
                 all_against = True
-            if len(contras) == 0:
+                st.markdown('The Nay-sayers have it')
+            if len(pros) == 0:
                 all_on_board = True
-            # all_on_board, all_against = lets_goooooo(given_participants_list, given_chosen_topic)
+                st.markdown('Everybody is convinced')
 
-        # # Aktualisiere st.session_state mit den neuen Zuständen
         st.session_state['all_on_board'] = all_on_board
         st.session_state['all_against'] = all_against
 
@@ -1228,7 +1193,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 )
                 st.markdown(result['choices'][0]['message']['content'])
 
-            # os.startfile(video_path)
+
         else:
             st.markdown('Um Token zu sparen, wird das Experiment an dieser Stelle abgebrochen')
 
@@ -1242,8 +1207,7 @@ prompt = (
     "2. Long and detailed conversation."
     "3. Topics: At least two subjects in their interest. If the simulation hypothesis comes up, focus on that"
     "4. Setting: At the beach. Everybody is relaxed "
-    "5. Topic: The Simulation Hypothesis and its implications"
-    "6. Involved Individuals: "
+    "5. Involved Individuals: "
 )
 
 
