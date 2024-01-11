@@ -92,8 +92,6 @@ def get_or_create_collection_with_session(client, collection_name, selector=2):
     return st.session_state['collections'][key]
 
 
-##ToDo @Pauline: Wenn ich das richtig verstehe, reagiert deine Lösung nicht auf Änderungen während der Session - deswegen hier eine Erweiterung.
-##ToDo Vielleicht kann das ja "irgendjemand" recherchieren
 if 'collections' not in st.session_state:
     st.session_state['collections'] = {}
 
