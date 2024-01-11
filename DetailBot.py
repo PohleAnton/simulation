@@ -1337,12 +1337,12 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
 
-                # hier könnte man überlegen, ob man diesen vorgang nach hinten schiebt, sodass erst beibe sprechen
-                # aber das projekt wird langsam teuer, deswegen...
+                # nimmt man die überprüfung hier vor, findet meist UMGEHEND eine überzeugung statt.
                 # for listener in contras:
                 #     new_listener_conviction = argument_vs_conviction(speaker_argument, listener, given_chosen_topic)
 
             listener = st.session_state['listener']
+            # teil 2 der unmittelbaren überprüfung -meist umgehend überzeugt
             # for listener in contras:
             #     test = score_conviction_and_answer(listener, given_chosen_topic)
             #     if 'yes' in test[0].lower():
@@ -1355,10 +1355,14 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
-                # das tatsächliche gegenargument
+
                 message_placeholder.markdown(listener + ": \n\n" + listener_argument)
                 message_placeholder = st.empty()
 
+            # hier wird nun eine mischung aus beiden argumenten erstellt, welche schließlich mit den individuellen überzeugungen
+            # verglichen wird. Die Idee war, dadurch gradueller Bewegungen zu erzielen und langsamer überzeugen -
+            # hat genau einmal funktioniert. Es ist aber aufgrund der Anzahl der Versuche schwer festzustellen, ob es nicht
+            # im alten Approach auch irgendwann so passiert wäre
             perspective = compare_arguments(speaker_argument, listener_argument)
             for speaker in pros:
                 new_speaker_conviction = argument_vs_conviction(perspective, speaker, given_chosen_topic)
