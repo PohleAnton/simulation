@@ -1284,7 +1284,6 @@ participants_list = []
 # ...
 
 with st.sidebar:
-    st.title("💬 ConversationsBot")
     st.write("With this program, you can make two selected individuals engage in a discussion. "
              "They will try to persuade each other, and you can observe their interaction. "
              "Simply click on the button \"Start first conversation\" to get started. "
@@ -1294,9 +1293,9 @@ with st.sidebar:
     part_2 = st.text_input("Second participant", "Karl Marx", key="part_2_input")
     if part_1 and part_2:
         participants_list = [part_1, part_2]
+    st.caption("Created by: Anton P., Pauline T., Sebastian K.")
 
-st.title("💬 ConversationsBot")
-st.caption("🚀 A streamlit bot powered by OpenAI LLM")
+st.title("💬 Conversation Bot")
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-3.5-turbo"
