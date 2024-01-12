@@ -842,7 +842,7 @@ def get_prior_discussion(topic, participants_list):
        Returns:
            str: Combined string of previous discussions, if any, otherwise an empty string.
        """
-    r = get_best_document(topic, participants_list, 0.25)
+    r = get_best_document(topic, participants_list, 0.20)
     combined_string = "\n".join(r) if len(r) > 1 else ''
     return combined_string
 
