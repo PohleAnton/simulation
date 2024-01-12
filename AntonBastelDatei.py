@@ -22,8 +22,11 @@ chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant
 #
 # ##Debugging only:
 # public_discussions = chroma.get_collection("public_discussions")
-# participant_collection = chroma.get_collection("participants")
-
+participant_collection = chroma.get_collection("participants")
+pers = participant_collection.get(where={'name' : 'Elon Musk'})
+pers_2 = pers['documents'][-1]
+pos = pers_2.rfind(':')
+pp= pers_2[pos+1:].strip() if pos !=-1 else ''
 first_finished = False
 # if 'first_finished' not in st.session_state:
 #     st.session_state['first_finished'] = False
@@ -772,9 +775,9 @@ def judge_concivtion(participant, topic):
         model=model,
         messages=[
             {"role": "system",
-             "content": "you are a binary judge that answers questions only with yes or no. You only say yes when you are REALLY convinced"},
+             "content": "You guess how hard somebody might be to convince. Don't be too harsh You only answer in 3 words or less"},
             {"role": "user",
-             "content": f"Based on this conviction: {conv}, how would you answer {issue}?"}
+             "content": "How easy is it to convince Karl Marx?"}
         ],
     )
     response = judge['choices'][0]['message']['content']
