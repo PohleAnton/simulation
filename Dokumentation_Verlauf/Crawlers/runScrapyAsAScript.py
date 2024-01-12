@@ -6,6 +6,12 @@ from collections import Counter
 import re
 import logging
 
+# Dieses Skript verwendet das Scrapy-Framework, um Webseiten zu crawlen und Informationen zu extrahieren. Es sucht nach relevanten Absätzen
+# auf verschiedenen URLs, bewertet sie anhand bestimmter Schlüsselwörter und filtert irrelevante Absätze aus. Die Top 10 bewerteten und relevanten
+# Absätze werden in einer JSON-Datei gespeichert. Das Scrapy-Framework ermöglicht das effiziente Crawlen und Extrahieren von Informationen
+# von Webseiten und ist besonders nützlich, um gezielte Informationen aus großen Textmengen zu gewinnen.
+
+
 # Funktion zum Bewerten eines Absatzes basierend auf der Häufigkeit bestimmter Schlüsselwörter
 def score_paragraph(paragraph):
     # Liste der Schlüsselwörter, die für die Bewertung verwendet werden
