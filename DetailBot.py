@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 import os
@@ -1318,7 +1319,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 speaker_argument = form_argument(speaker, given_chosen_topic, 'yes', given_participants_list)
                 speaker_argument = fix_third_person(speaker, speaker_argument)
                 # das ist das, womit der participant überzeugen will:
-                message_placeholder.markdown(speaker + ": \n\n" + speaker_argument)
+                message_placeholder.markdown("**" + speaker + ":** \n" + speaker_argument)
                 message_placeholder = st.empty()
                 public_discussions.add(documents=speaker_argument, ids=str(start_number),
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
@@ -1343,7 +1344,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                                        metadatas={'theme': given_chosen_topic, 'issue': issue,
                                                   'participants': participants})
 
-                message_placeholder.markdown(listener + ": \n\n" + listener_argument)
+                message_placeholder.markdown("**" + listener + ":** \n" + listener_argument)
                 message_placeholder = st.empty()
 
             # hier wird nun eine mischung aus beiden argumenten erstellt, welche schließlich mit den individuellen überzeugungen
@@ -1477,10 +1478,9 @@ def start_first_conversation():
 
 
 def start_conversation():
-    with st.chat_message("assistant"):
-        first_conv_str, extracted_topics = start_first_conversation()
-        if "first_conv_str" not in st.session_state:
-            st.session_state.first_conv_str = first_conv_str
+    first_conv_str, extracted_topics = start_first_conversation()
+    if "first_conv_str" not in st.session_state:
+        st.session_state.first_conv_str = first_conv_str
     return extracted_topics
 
 
@@ -1531,8 +1531,11 @@ if st.session_state.counter == 0:
 
 if st.session_state.counter != 0:
     with st.chat_message("assistant"):
-        st.markdown(f"First Conversation between {part_1} and {part_2}:")
-        st.markdown(st.session_state.first_conv_str)
+        st.markdown(f"**First Conversation between {part_1} and {part_2}**")
+        # names of the participants will be bold
+        pattern = re.compile(r'(\b[A-Za-z ]+\b:)(?=\s)')
+        output_string = pattern.sub(r'**\1**', st.session_state.first_conv_str)
+        st.markdown(output_string)
     for topic in st.session_state.extracted_topics:
         if st.button(topic):
             next_conversation(participants_list, topic)
