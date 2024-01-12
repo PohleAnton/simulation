@@ -22,7 +22,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 chroma = chromadb.HttpClient(host='localhost', port=8000, tenant="default_tenant", database='default_database')
 
 
-#chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
+# chroma = chromadb.HttpClient(host='server', port=8000, tenant="default_tenant", database='default_database')
 
 
 def reset_session_state():
@@ -80,8 +80,6 @@ def get_or_create_collection_with_session(client, collection_name, selector):
             st.error(f"Fehler beim Aktualisieren der Sammlungsinformationen: {e}")
 
     return st.session_state['collections'][key]
-
-
 
 
 if 'chat_history' not in st.session_state:
@@ -626,8 +624,6 @@ def write_conviction_collection(participant, topic, arguments=''):
     collection.add(documents=final, metadatas={'theme': topic}, ids=topic + timestamp_string)
 
 
-
-
 def find_core_issues(topic):
     """
         Uses GPT to identify the core issues associated with a given topic. Posed as a Yes/No Question. Is used for checking conviction
@@ -675,7 +671,7 @@ def unstringyfy(data_str):
           """
     if isinstance(data_str, dict):
         # Wenn data_str bereits ein Dictionary ist, gib es unverändert zurück
-        parsed_data =data_str
+        parsed_data = data_str
         return parsed_data
 
     try:
@@ -708,7 +704,6 @@ def extract_topics_of_conversation(given_conversation):
             Returns:
                conversation_topics: A list of topics found in the conversation
            """
-
 
     conversation_topics = []
     chroma_metadatas = []
@@ -750,7 +745,6 @@ def extract_topics_of_conversation(given_conversation):
 
     new_data = unstringyfy(data)
 
-
     try:
         for theme in new_data["themes"]:
             for prior_topic in st.session_state['all_topics']:
@@ -775,13 +769,11 @@ def extract_topics_of_conversation(given_conversation):
         chroma_ids = [str(id) for id in chroma_ids]
         public_discussions.add(documents=chroma_documents, metadatas=chroma_metadatas, ids=chroma_ids)
 
-
         return conversation_topics
     except Exception:
         # there are cases where the function call return a poorly formatted result. these cases should be handled by now
         # this is just a failsafe
         a = extract_topics_of_conversation(given_conversation)
-
 
 
 def add_knowledge_to_profile(participant, given_topics):
@@ -803,8 +795,6 @@ def get_yes_or_no(topic):
     n = public_discussions.get(where={'theme': topic})
     t = n['metadatas'][0]['issue']
     return t
-
-
 
 
 def get_best_document(topic, participants_list, precision):
@@ -1063,8 +1053,6 @@ def argument_vs_conviction(argument, listener, chosen_topic):
     return ans
 
 
-
-
 # selbst gpt-4 schreibt nicht zuverlässig in der 1. person - dies ist aber vonnöten, um die überzeugungen von der person lösen zu können
 def make_first_person(conviction):
     """
@@ -1281,7 +1269,6 @@ def compare_arguments(argument_1, argument_2):
         return result
 
 
-
 def next_conversation(given_participants_list, given_chosen_topic=""):
     speaker_argument = st.session_state['speaker_argument']
     listener_argument = st.session_state['listener_argument']
@@ -1377,7 +1364,6 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                     contras.remove(listener)
                     pros.append(listener)
 
-
             if len(pros) == 0:
                 all_against = True
                 st.markdown('The Nay-sayers have it')
@@ -1415,9 +1401,6 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 st.markdown(result['choices'][0]['message']['content'])
 
 
-
-
-
 profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
 
 # Dieser Prompt erwähnt the Simulation Hypothesis nur halb explizit - es taucht dennoch in ca. 80 % aller Konversationen auf
@@ -1431,7 +1414,7 @@ profile_scheme = read_from_file('./FilesForDocker/scheme.txt')
 #     "4. Setting: At the beach. Everybody is relaxed "
 #     "5. Involved Individuals: "
 # )
-#zum Token sparen wird es hier aber explizit erwähnt
+# zum Token sparen wird es hier aber explizit erwähnt
 prompt = (
     "Write a conversation with the following setup: "
     "1. Informal, emotional conversation between people who’ve known each other for a long time and don’t like each other "
@@ -1442,6 +1425,7 @@ prompt = (
     "5. Setting: At the beach. Everybody is relaxed "
     "6. Involved Individuals: "
 )
+
 
 def make_final_prompt(issue, answer):
     """
@@ -1465,8 +1449,6 @@ def make_final_prompt(issue, answer):
                   f"\"{issue}\" with '{answer}' - write a possible statement this civilisation "
                   "might give as a whole. can be emotional or radical. Make it an optimistic response")
     return prompt, choice
-
-
 
 
 # falls alle die gleich überzeugung haben, generiert dies solange neue überzeugungen, bis das nicht der fall ist...ich kommentiere es vorerst aus, weil hier ggf gpt-4 benutzt werden soll...
@@ -1493,16 +1475,19 @@ def start_first_conversation():
         add_knowledge_to_profile(participant, extracted_topics)
     return first_conversation_str, extracted_topics
 
+
 def start_conversation():
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
         first_conv_str, extracted_topics = start_first_conversation()
-        message_placeholder.markdown(first_conv_str)
+        if "first_conv_str" not in st.session_state:
+            st.session_state.first_conv_str = first_conv_str
     return extracted_topics
+
 
 def end_conversation():
     with st.chat_message("assistant"):
         st.markdown("Die Konversation wurde beendet.")
+
 
 # Haupt-Streamlit-Code
 participants_list = []
@@ -1545,6 +1530,9 @@ if st.session_state.counter == 0:
         st.session_state.counter = 1
 
 if st.session_state.counter != 0:
+    with st.chat_message("assistant"):
+        st.markdown(f"First Conversation between {part_1} and {part_2}:")
+        st.markdown(st.session_state.first_conv_str)
     for topic in st.session_state.extracted_topics:
         if st.button(topic):
             next_conversation(participants_list, topic)
