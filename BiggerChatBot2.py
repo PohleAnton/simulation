@@ -10,6 +10,19 @@ import yaml
 from chromadb.utils import embedding_functions
 from sqlalchemy.testing.plugin.plugin_base import logging
 
+# Dieses Skript kombiniert OpenAI, Streamlit und ChromaDB, um ein interaktives System für die Generierung und Verwaltung
+# von Diskussionen zu erstellen. Es ermöglicht Nutzern, durch Streamlit-basierte Oberfläche, Gespräche zwischen verschiedenen
+# Teilnehmern zu simulieren und zu steuern. Hauptmerkmale des Skripts beinhalten:
+# - Erzeugung von Diskussionsthemen und Teilnehmerprofilen mithilfe der OpenAI-API.
+# - Speicherung und Abfrage von Diskussionsinhalten und Teilnehmerinformationen in ChromaDB.
+# - Streamlit-Interface für die Nutzerinteraktion, um Diskussionen zu starten, zu steuern und zu beenden.
+# - Dynamische Generierung von Gesprächsinhalten basierend auf Benutzereingaben und vordefinierten Kriterien.
+# - Erweiterte Funktionen für Textanalyse und -verarbeitung, einschließlich der Extraktion von Kernthemen und Überzeugungen.
+# Das Skript demonstriert eine innovative Nutzung von KI-Technologien und Datenbankmanagement zur Erstellung eines
+# interaktiven und dynamischen Diskussionssimulators.
+
+
+
 openai.api_key = yaml.safe_load(open("config.yml")).get('KEYS', {}).get('openai')
 model = "gpt-3.5-turbo-1106"
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(

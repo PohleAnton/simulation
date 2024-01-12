@@ -7,6 +7,13 @@ import json
 
 from Dokumentation_Verlauf.FocusedConversationApproach.GeneratePersonsMethods import both
 
+# Dieses Skript liest Personenprofile und Stimmungsdaten aus Textdateien ein, erstellt dann ein Konversations-Prompt
+# basierend auf diesen Daten und verwendet die OpenAI-ChatCompletion-API, um eine Konversation zu generieren und zu analysieren.
+# Die analysierte Konversation wird in thematische Abschnitte unterteilt, und die Informationen zu jedem Thema werden in
+# Dateien gespeichert. Schließlich werden Wikipedia-ähnliche Aufzählungspunkte aus den analysierten Themen extrahiert und
+# in einer Liste zurückgegeben.
+
+
 with open('config.yml', 'r') as ymlfile:
     cfg = yaml.safe_load(ymlfile)
 openai.api_key = cfg.get('openai')

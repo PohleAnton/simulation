@@ -11,7 +11,20 @@ from pathlib import Path
 import random
 from chromadb.utils import embedding_functions
 
-# TODO: Twitter API-Schlüssel und Zugangstokens bereit bereitstellen
+# Dieses Skript kombiniert die Nutzung von Tweepy, OpenAI, ChromaDB und weiteren Bibliotheken für ein komplexes System zur Simulation
+# sozialer Diskussionen und Interaktionen. Es umfasst Funktionen für Twitter-Interaktionen, Textsegmentierung, dynamische Generierung
+# von Diskussionen und Argumenten sowie Datenbankverwaltung. Mittels Tweepy werden Twitter-Konten authentifiziert und Tweets
+# abwechselnd von verschiedenen Accounts gesendet, basierend auf den generierten Diskussionen. Die OpenAI-API wird genutzt, um
+# fortgeschrittene Textgenerierung und -analyse durchzuführen, die Teilnehmerprofile und Diskussionsthemen zu erstellen und zu verwalten.
+# ChromaDB dient zur Speicherung und Abfrage von Diskussionsinhalten und Teilnehmerinformationen. Zusätzlich implementiert das Skript
+# spezialisierte Funktionen für die Analyse und Generierung von Diskussionselementen, was es ermöglicht, realistische und dynamische
+# soziale Interaktionen zu simulieren. Dieses Skript demonstriert, wie moderne KI-Technologien effektiv eingesetzt werden können, um
+# komplexe soziale Interaktions- und Diskussionssimulationen zu erstellen, die in Bereichen wie sozialen Medien, interaktiver Unterhaltung
+# und virtuellen Debatten Anwendung finden können.
+
+
+
+# TODO: Twitter API-Schlüssel und Zugangstokens bereitstellen
 # Diese sollten als Umgebungsvariablen oder in einer Konfigurationsdatei gespeichert sein
 api_key_elon = os.getenv("API_KEY_ELON")
 api_secret_elon = os.getenv("API_SECRET_ELON")
