@@ -1389,7 +1389,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 )
                 st.markdown(result['choices'][0]['message']['content'])
                 if selector == 0:
-                    st.markdown('shutdown_system()')
+                    shutdown_system()
             if st.session_state['all_against']:
                 prompt = make_final_prompt(issue, 'no')[0]
                 result = openai.ChatCompletion.create(
