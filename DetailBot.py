@@ -340,7 +340,7 @@ functions = [
     },
     {
         "name": "form_argument",
-        "description": "A function that generates a convincing argument that a certain idea is true. Based on conviction and given strategies. Should be as convincing as possible.  ",
+        "description": "A function that generates a convincing argument that a certain idea is true. Based on conviction and given strategies. Should be as convincing as possible. Radical, bold statement. ",
         "parameters": {
             "type": "object",
             "properties": {
@@ -365,7 +365,7 @@ functions = [
     },
     {
         "name": "form_counterargument",
-        "description": "A function that generates a convincing argument about the falsehood of an idea or topic based on conviction and given strategies. Should be as convincing as possible.  ",
+        "description": "A function that generates a convincing argument about the falsehood of an idea or topic based on conviction and given strategies. Should be as convincing as possible. Radical, bold statement. ",
         "parameters": {
             "type": "object",
             "properties": {
@@ -884,13 +884,11 @@ def get_stratey():
     dir_path = current_dir / dir_name
     file_path = dir_path / file_name
     with open(file_path, 'r') as file:
-        content = file.read()
-        bullet_points_list = content.split('\n')
-        random_bullet_points = random.sample(bullet_points_list, 2)
-        random_bullet_points_string = '\n'.join(random_bullet_points)
-        # so that it always tries to be logical:
-        logic = '\n'.join('Logical Reasoning, Emotional Appeal')
-        return logic
+        bullet_points_list = file.read().split('\n')
+        random_bullet_point = random.choice(bullet_points_list)
+        #so that it is always logical
+        strategy_list = ["Logical Reasoning", "Emotional Appeal", random_bullet_point]
+        return strategy_list
 
 
 def form_argument(speaker, chosen_topic, believe, participants_list):
@@ -1390,7 +1388,7 @@ def next_conversation(given_participants_list, given_chosen_topic=""):
                 )
                 st.markdown(result['choices'][0]['message']['content'])
                 if selector == 0:
-                    shutdown_system()
+                    st.markdown('shutdown_system()')
             if st.session_state['all_against']:
                 prompt = make_final_prompt(issue, 'no')[0]
                 result = openai.ChatCompletion.create(
